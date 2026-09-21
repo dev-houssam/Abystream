@@ -1,0 +1,68 @@
+/* ================================================================
+ * Emploi du temps — configuration
+ * ================================================================
+ * Host/port/base via variables d'environnement (idiome MATL-ABC).
+ * ================================================================ */
+
+str env_or(str name, str fallback) {
+    char* raw = getenv(cstr_of(name));
+    if (raw == cast<char*>(0)) { return fallback; }
+    str v = str_from(raw);
+    if (v == "") { return fallback; }
+    return v;
+}
+
+str app_host()    { return env_or("HOST", "127.0.0.1"); }
+int app_port()    { return env_or("PORT", "80").to_int(); }
+str app_db_path() { return env_or("DB_PATH", "database/edt.db"); }
+str app_jwt_secret() { return env_or("JWT_SECRET", "edt-@@@@@@@@95!college-secret-dev"); }
+
+void register_middlewares() { }
+
+/* Peuple la base si elle est vide : classes, matieres, professeurs,
+   quelques cours, et les comptes des trois roles. */
+void seed_if_empty() {
+    EdtModel* edt = new EdtModel(app_db_path());
+    if (edt.compter("classes") == 0) {
+        /* classes */
+        edt.creer_classe("6eA");
+        edt.creer_classe("5eB");
+
+        /* matieres, avec leur couleur d'affichage */
+        edt.creer_matiere("Mathematiques", "#4c6ef5");
+        edt.creer_matiere("Francais",      "#f76707");
+        edt.creer_matiere("Histoire-Geo",  "#37b24d");
+        edt.creer_matiere("Anglais",       "#ae3ec9");
+        edt.creer_matiere("SVT",           "#0ca678");
+        edt.creer_matiere("EPS",           "#f03e3e");
+
+        /* professeurs */
+        edt.creer_professeur("Mme Bernard");
+        edt.creer_professeur("M. Diallo");
+        edt.creer_professeur("Mme Nguyen");
+
+        /* quelques cours pour la 6eA (classe 1) */
+        edt.creer_cours(1, 1, 1, 0, 0, "B12");   /* lundi 8h  maths   */
+        edt.creer_cours(1, 2, 2, 0, 1, "A03");   /* lundi 9h  francais*/
+        edt.creer_cours(1, 3, 3, 0, 2, "C21");   /* lundi 10h hist-geo*/
+        edt.creer_cours(1, 4, 2, 1, 0, "A03");   /* mardi 8h  anglais */
+        edt.creer_cours(1, 5, 1, 1, 1, "S01");   /* mardi 9h  SVT     */
+        edt.creer_cours(1, 6, 3, 2, 0, "GYM");   /* mercredi 8h EPS   */
+        /* et pour la 5eB (classe 2) */
+        edt.creer_cours(2, 2, 2, 0, 0, "A04");   /* lundi 8h  francais*/
+        edt.creer_cours(2, 1, 1, 0, 1, "B12");   /* lundi 9h  maths   */
+        edt.creer_cours(2, 5, 1, 3, 2, "S01");   /* jeudi 10h SVT     */
+    }
+    edt.close();
+
+    /* comptes des trois roles */
+    UtilisateurModel* users = new UtilisateurModel(app_db_path());
+    if (users.count() == 0) {
+        users.creer("scolarite", "scolarite", "scolarite", 0);
+        users.creer("bernard",   "prof",      "prof",      1);
+        users.creer("diallo",    "prof",      "prof",      2);
+        users.creer("eleve6a",   "eleve",     "collegien", 1);
+        users.creer("eleve5b",   "eleve",     "collegien", 2);
+    }
+    users.close();
+}

@@ -1,0 +1,45 @@
+{{#if message}}<div class="message">{{ message }}</div>{{/if}}
+<div class="carte">
+<h3 style="margin-top:0">Ajouter un cours</h3>
+<form method="post" action="/scolarite/cours">
+<div class="ligne">
+<div><label>Classe</label><select name="classe_id">
+{{#each classes}}<option value="{{ id }}">{{ nom }}</option>{{/each}}
+</select></div>
+<div><label>Matiere</label><select name="matiere_id">
+{{#each matieres}}<option value="{{ id }}">{{ nom }}</option>{{/each}}
+</select></div>
+<div><label>Professeur</label><select name="prof_id">
+{{#each professeurs}}<option value="{{ id }}">{{ nom }}</option>{{/each}}
+</select></div>
+</div>
+<div class="ligne">
+<div><label>Jour</label><select name="jour">
+<option value="0">Lundi</option><option value="1">Mardi</option>
+<option value="2">Mercredi</option><option value="3">Jeudi</option>
+<option value="4">Vendredi</option></select></div>
+<div><label>Sequence</label><select name="sequence">
+<option value="0">1re (08h)</option><option value="1">2e (09h)</option>
+<option value="2">3e (10h)</option><option value="3">4e (11h)</option>
+<option value="4">5e (12h)</option><option value="5">6e (13h)</option>
+<option value="6">7e (14h)</option><option value="7">8e (15h)</option></select></div>
+<div><label>Salle</label><input name="salle" value="B12"></div>
+</div>
+<div style="margin-top:1rem"><button type="submit">Ajouter le cours</button></div>
+</form>
+</div>
+
+<div class="carte">
+<h3 style="margin-top:0">Cours programmes</h3>
+{{#if cours}}
+<ul class="cours">
+{{#each cours}}
+<li><span>{{ libelle }}</span>
+<form method="post" action="/scolarite/supprimer" style="margin:0">
+<input type="hidden" name="id" value="{{ id }}">
+<button type="submit">Supprimer</button></form></li>
+{{/each}}
+</ul>
+{{/if}}
+{{#unless cours}}<p style="color:#868e96">Aucun cours programme.</p>{{/unless}}
+</div>

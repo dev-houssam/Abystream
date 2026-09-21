@@ -1,0 +1,351 @@
+/* ================================================================
+ * Emploi du temps — controleurs
+ * ================================================================
+ * Trois roles, trois vues :
+ *   - collegien : l'emploi du temps de SA classe (lecture seule)
+ *   - prof      : SON emploi du temps (lecture seule)
+ *   - scolarite : la grille complete, avec ajout et suppression
+ *
+ * L'identite et le role voyagent dans un JWT, verifie a chaque requete.
+ * ================================================================ */
+
+/* ----------------------------------------------------------------
+ * AuthController — connexion, deconnexion
+ * ---------------------------------------------------------------- */
+struct AuthController {
+    void init() { }
+
+    /* GET / : formulaire de connexion. */
+    void connexion(Request* request, Response* response) {
+        Template* t = new Template("app/Views/login.html");
+        page(response, "Connexion", t.render(), "");
+    }
+
+    /* POST /login : verifie et pose le jeton dans un cookie. */
+    void login(Request* request, Response* response) {
+        str identifiant = request.form("identifiant");
+        str mot_de_passe = request.form("motdepasse");
+
+        UtilisateurModel* users = new UtilisateurModel(app_db_path());
+        Utilisateur* u = users.authentifier(identifiant, mot_de_passe);
+        users.close();
+
+        if (u == null) {
+            Template* t = new Template("app/Views/login.html");
+            t.set("erreur", "Identifiant ou mot de passe incorrect.");
+            page(response, "Connexion", t.render(), "");
+            response.status(401);
+            return;
+        }
+
+        str jeton = jeton_de(u);
+        response.status(302)
+                .location("/edt")
+                .setCookie(f"""jeton={jeton}; Path=/; HttpOnly""");
+    }
+
+    /* GET /logout : efface le cookie. */
+    void logout(Request* request, Response* response) {
+        response.status(302)
+                .location("/")
+                .setCookie("jeton=; Path=/; Max-Age=0");
+    }
+}
+
+/* ----------------------------------------------------------------
+ * EdtController — consultation selon le role
+ * ---------------------------------------------------------------- */
+struct EdtController {
+    void init() { }
+
+    /* GET /edt : la grille adaptee au role de l'utilisateur connecte. */
+    void index(Request* request, Response* response) {
+        Utilisateur* u = utilisateur_courant(request);
+        if (u == null) { redirige_connexion(response); return; }
+
+        EdtModel* edt = new EdtModel(app_db_path());
+        Vec<Cours*>* cours = new Vec<Cours*>();
+        str titre = "";
+
+        if (u.est_collegien()) {
+            cours = edt.pour_classe(u.ref_id);
+            titre = f"""Emploi du temps de ma classe""";
+        } else if (u.est_prof()) {
+            cours = edt.pour_professeur(u.ref_id);
+            titre = f"""Mon emploi du temps""";
+        } else {
+            cours = edt.tous();
+            titre = f"""Grille complete de l'etablissement""";
+        }
+        edt.close();
+
+        str corps = grille_html(cours, u);
+        page(response, titre, corps, u.role_libelle());
+    }
+}
+
+/* ----------------------------------------------------------------
+ * ScolariteController — modification (role scolarite uniquement)
+ * ---------------------------------------------------------------- */
+struct ScolariteController {
+    void init() { }
+
+    /* GET /scolarite : formulaire d'ajout + liste des cours. */
+    void edition(Request* request, Response* response) {
+        Utilisateur* u = utilisateur_courant(request);
+        if (u == null) { redirige_connexion(response); return; }
+        if (!u.est_scolarite()) { refuse(response, u); return; }
+
+        Template* t = new Template("app/Views/edition.html");
+        EdtModel* edt = new EdtModel(app_db_path());
+
+        /* listes de reference pour les menus deroulants */
+        Vec<Classe*>* classes = edt.classes();
+        Vec<TplData*>* dc = new Vec<TplData*>();
+        for i in range(classes.len()) {
+            TplData* d = new TplData();
+            d.setInt("id", classes.get(i).id);
+            d.set("nom", classes.get(i).nom);
+            dc.push(d);
+        }
+        t.setList("classes", dc);
+
+        Vec<Matiere*>* matieres = edt.matieres();
+        Vec<TplData*>* dm = new Vec<TplData*>();
+        for i in range(matieres.len()) {
+            TplData* d = new TplData();
+            d.setInt("id", matieres.get(i).id);
+            d.set("nom", matieres.get(i).nom);
+            dm.push(d);
+        }
+        t.setList("matieres", dm);
+
+        Vec<Professeur*>* profs = edt.professeurs();
+        Vec<TplData*>* dp = new Vec<TplData*>();
+        for i in range(profs.len()) {
+            TplData* d = new TplData();
+            d.setInt("id", profs.get(i).id);
+            d.set("nom", profs.get(i).nom);
+            dp.push(d);
+        }
+        t.setList("professeurs", dp);
+
+        /* cours existants, avec leur bouton de suppression */
+        Vec<Cours*>* tous = edt.tous();
+        Vec<TplData*>* dcours = new Vec<TplData*>();
+        for i in range(tous.len()) {
+            Cours* c = tous.get(i);
+            TplData* d = new TplData();
+            d.setInt("id", c.id);
+            d.set("libelle", f"""{c.classe_nom} — {c.show()}""");
+            dcours.push(d);
+        }
+        t.setList("cours", dcours);
+
+        str message = request.getQuery("msg");
+        if (message != "") { t.set("message", url_decode(message)); }
+
+        edt.close();
+        page(response, "Modifier l'emploi du temps", t.render(), u.role_libelle());
+    }
+
+    /* POST /scolarite/cours : ajoute un cours si aucun conflit. */
+    void ajouter(Request* request, Response* response) {
+        Utilisateur* u = utilisateur_courant(request);
+        if (u == null) { redirige_connexion(response); return; }
+        if (!u.est_scolarite()) { refuse(response, u); return; }
+
+        int classe_id  = request.form("classe_id").to_int();
+        int matiere_id = request.form("matiere_id").to_int();
+        int prof_id    = request.form("prof_id").to_int();
+        int jour       = request.form("jour").to_int();
+        int sequence   = request.form("sequence").to_int();
+        str salle      = request.form("salle");
+
+        EdtModel* edt = new EdtModel(app_db_path());
+        Cours* candidat = new Cours(0, classe_id, matiere_id, prof_id,
+                                    jour, sequence, salle);
+        Cours* conflit = edt.conflit_pour(candidat);
+
+        str message = "";
+        if (conflit == null) {
+            edt.creer_cours(classe_id, matiere_id, prof_id, jour, sequence, salle);
+            message = f"""Cours ajoute : {jour_nom(jour)} sequence {str_of(sequence + 1)}.""";
+        } else {
+            message = f"""Conflit refuse : le creneau est deja pris par {conflit.matiere_nom} ({conflit.prof_nom}, salle {conflit.salle}).""";
+        }
+        edt.close();
+
+        response.status(302).location(f"""/scolarite?msg={url_encode_simple(message)}""");
+    }
+
+    /* POST /scolarite/supprimer : retire un cours. */
+    void supprimer(Request* request, Response* response) {
+        Utilisateur* u = utilisateur_courant(request);
+        if (u == null) { redirige_connexion(response); return; }
+        if (!u.est_scolarite()) { refuse(response, u); return; }
+
+        int id = request.form("id").to_int();
+        EdtModel* edt = new EdtModel(app_db_path());
+        edt.supprimer_cours(id);
+        edt.close();
+
+        response.status(302).location("/scolarite?msg=Cours%20supprime.");
+    }
+}
+
+/* ================================================================
+ * Fonctions partagees (le langage n'a pas de fonctions generiques
+ * libres, mais des fonctions concretes le sont)
+ * ================================================================ */
+
+/* Fabrique le JWT d'un utilisateur : identifiant, role, reference. */
+str jeton_de(Utilisateur* u) {
+    str charge = f"""{{"sub":"{u.identifiant}","role":"{u.role}","ref":{str_of(u.ref_id)}}}""";
+    return jwt_encode(charge, app_jwt_secret());
+}
+
+/* Lit le cookie "jeton", verifie la signature et recharge l'utilisateur.
+   Renvoie null<Utilisateur> si absent ou invalide. */
+Utilisateur* utilisateur_courant(Request* request) {
+    str jeton = request.getCookie("jeton");
+    if (jeton == "") { return null<Utilisateur>; }
+    if (!jwt_verify(jeton, app_jwt_secret())) { return null<Utilisateur>; }
+
+    str charge = jwt_b64url_decode(jwt_payload_b64(jeton));
+    str identifiant = champ_json(charge, "sub");
+    if (identifiant == "") { return null<Utilisateur>; }
+
+    UtilisateurModel* users = new UtilisateurModel(app_db_path());
+    Utilisateur* u = users.par_identifiant(identifiant);
+    users.close();
+    return u;
+}
+
+void redirige_connexion(Response* response) {
+    response.status(302).location("/");
+}
+
+void refuse(Response* response, Utilisateur* u) {
+    str corps = f"""<div class="carte"><h2>Acces refuse</h2>
+        <p>Cette page est reservee a la scolarite. Vous etes connecte en tant
+        que {u.role_libelle()}.</p>
+        <p><a href="/edt">Retour a mon emploi du temps</a></p></div>""";
+    page(response, "Acces refuse", corps, u.role_libelle());
+    response.status(403);
+}
+
+/* Enveloppe une page dans le gabarit commun. */
+void page(Response* response, str titre, str corps, str role) {
+    Template* layout = new Template("app/Views/layout.html");
+    layout.set("titre", titre);
+    layout.set("contenu", corps);
+    layout.set("role", role);
+    layout.set("date", date_du_jour());
+    if (role == "Scolarite") { layout.set("est_scolarite", "true"); }
+    if (role != "") { layout.set("connecte", "true"); }
+    response.body(layout.render()).status(200);
+}
+
+/* Extrait un champ d'un JSON plat. */
+str champ_json(str json, str cle) {
+    str motif = f""""{cle}":""";
+    int pos = trouver_texte(json, motif, 0);
+    if (pos < 0) { return ""; }
+    int debut = pos + cast<int>(motif.len());
+    int n = cast<int>(json.len());
+    while (debut < n && json.slice(debut, debut + 1) == " ") { debut = debut + 1; }
+    if (debut >= n) { return ""; }
+    if (json.slice(debut, debut + 1) == "\"") {
+        int fin = trouver_texte(json, "\"", debut + 1);
+        if (fin < 0) { return ""; }
+        return json.slice(debut + 1, fin);
+    }
+    int fin = debut;
+    while (fin < n) {
+        str c = json.slice(fin, fin + 1);
+        if (c == "," || c == "}") { break; }
+        fin = fin + 1;
+    }
+    return json.slice(debut, fin);
+}
+
+int trouver_texte(str hay, str needle, int from) {
+    int nlen = cast<int>(needle.len());
+    int n = cast<int>(hay.len());
+    if (nlen == 0) { return -1; }
+    int i = from;
+    while (i + nlen <= n) {
+        if (hay.slice(i, i + nlen) == needle) { return i; }
+        i = i + 1;
+    }
+    return -1;
+}
+
+/* Encodage minimal pour passer un message dans une URL. */
+str url_encode_simple(str s) {
+    str out = "";
+    int n = cast<int>(s.len());
+    for i in range(n) {
+        str c = s.slice(i, i + 1);
+        if (c == " ") { out = out + "%20"; }
+        else if (c == ":") { out = out + "%3A"; }
+        else if (c == ",") { out = out + "%2C"; }
+        else if (c == "(") { out = out + "%28"; }
+        else if (c == ")") { out = out + "%29"; }
+        else { out = out + c; }
+    }
+    return out;
+}
+
+/* ================================================================
+ * Rendu de la grille hebdomadaire
+ * ================================================================
+ * Construit un tableau 5 jours x 8 sequences. Chaque case affiche le
+ * cours qui l'occupe, colore par matiere.
+ * ================================================================ */
+str grille_html(Vec<Cours*>* cours, Utilisateur* u) {
+    str entete = f"""<div class="carte"><table class="grille"><tr><th></th>""";
+    for j in range(5) {
+        entete = entete + f"""<th>{jour_nom(j)}</th>""";
+    }
+    entete = entete + "</tr>";
+
+    str lignes = "";
+    for seq in range(8) {
+        Creneau* c = new Creneau(0, seq);
+        lignes = lignes + f"""<tr><th class="heure">{c.debut().show()}</th>""";
+        for j in range(5) {
+            lignes = lignes + case_html(cours, j, seq, u);
+        }
+        lignes = lignes + "</tr>";
+    }
+    return entete + lignes + "</table></div>";
+}
+
+/* Une case de la grille : TOUS les cours qui occupent (jour, sequence).
+   Pour la scolarite, plusieurs classes peuvent partager un creneau : on
+   les empile dans la meme case plutot que de n'en afficher qu'un seul
+   (sinon des cours disparaissent silencieusement de la grille). */
+str case_html(Vec<Cours*>* cours, int jour, int sequence, Utilisateur* u) {
+    str contenu = "";
+    int trouves = 0;
+    for i in range(cours.len()) {
+        Cours* c = cours.get(i);
+        if (c.jour == jour && c.sequence == sequence) {
+            trouves = trouves + 1;
+            /* la scolarite et les profs voient la classe concernee */
+            str contexte = "";
+            if (!u.est_collegien()) {
+                contexte = f"""<span class="classe">{c.classe_nom}</span>""";
+            }
+            str qui = c.prof_nom;
+            if (u.est_prof()) { qui = c.classe_nom; }
+            contenu = contenu + f"""<div class="seance" style="border-left:4px solid {c.matiere_couleur}">
+                <strong>{c.matiere_nom}</strong>{contexte}
+                <small>{qui} · {c.salle}</small></div>""";
+        }
+    }
+    if (trouves == 0) { return "<td class=\"libre\"></td>"; }
+    return f"""<td class="occupee">{contenu}</td>""";
+}

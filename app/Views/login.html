@@ -1,0 +1,17 @@
+<div class="carte" style="max-width:400px;margin:2rem auto">
+<h2 style="margin-top:0">Connexion</h2>
+{{#if erreur}}<div class="erreur">{{ erreur }}</div>{{/if}}
+<form method="post" action="/login">
+<label>Identifiant</label>
+<input name="identifiant" value="eleve6a" autofocus>
+<label>Mot de passe</label>
+<input name="motdepasse" type="password" value="eleve">
+<div style="margin-top:1rem"><button type="submit">Se connecter</button></div>
+</form>
+<p style="color:#868e96;font-size:.83rem;margin-top:1.2rem;line-height:1.6">
+Comptes de demonstration :<br>
+<b>scolarite</b> / scolarite — modifie l'emploi du temps<br>
+<b>bernard</b> / prof — vue professeur<br>
+<b>eleve6a</b> / eleve — vue collegien (6eA)
+</p>
+</div>

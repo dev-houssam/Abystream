@@ -1,0 +1,164 @@
+/* ================================================================
+ * Emploi du temps — EdtModel
+ * ================================================================
+ * Acces aux donnees de la grille : classes, matieres, professeurs et
+ * cours. Fournit les vues par role (classe / professeur) et la
+ * detection de conflits avant insertion.
+ * ================================================================ */
+
+struct EdtModel {
+    Connection* conn;
+
+    void init(str db_path) {
+        self.conn = new SqliteConnection(db_path);
+        self.conn.run(f"""CREATE TABLE IF NOT EXISTS classes(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL UNIQUE)""");
+        self.conn.run(f"""CREATE TABLE IF NOT EXISTS matieres(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL UNIQUE,
+            couleur TEXT NOT NULL DEFAULT '#868e96')""");
+        self.conn.run(f"""CREATE TABLE IF NOT EXISTS professeurs(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL)""");
+        self.conn.run(f"""CREATE TABLE IF NOT EXISTS cours(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            classe_id INTEGER NOT NULL,
+            matiere_id INTEGER NOT NULL,
+            prof_id INTEGER NOT NULL,
+            jour INTEGER NOT NULL,
+            sequence INTEGER NOT NULL,
+            salle TEXT NOT NULL DEFAULT '')""");
+    }
+
+    /* --- comptages (pour le peuplement initial) --- */
+    int compter(str table) {
+        Result* r = self.conn.select(f"""SELECT COUNT(*) AS n FROM {table}""");
+        if (r.is_empty()) { return 0; }
+        return r.get(0).get("n").as_int();
+    }
+
+    /* --- creation --- */
+    void creer_classe(str nom) {
+        self.conn.run(f"""INSERT INTO classes(nom) VALUES({sql_quote(nom)})""");
+    }
+    void creer_matiere(str nom, str couleur) {
+        self.conn.run(f"""INSERT INTO matieres(nom, couleur)
+            VALUES({sql_quote(nom)}, {sql_quote(couleur)})""");
+    }
+    void creer_professeur(str nom) {
+        self.conn.run(f"""INSERT INTO professeurs(nom) VALUES({sql_quote(nom)})""");
+    }
+    void creer_cours(int classe_id, int matiere_id, int prof_id,
+                     int jour, int sequence, str salle) {
+        self.conn.run(f"""INSERT INTO cours(classe_id, matiere_id, prof_id, jour, sequence, salle)
+            VALUES({str_of(classe_id)}, {str_of(matiere_id)}, {str_of(prof_id)},
+                   {str_of(jour)}, {str_of(sequence)}, {sql_quote(salle)})""");
+    }
+
+    void supprimer_cours(int id) {
+        self.conn.run(f"""DELETE FROM cours WHERE id = {str_of(id)}""");
+    }
+
+    /* --- listes de reference --- */
+    Vec<Classe*>* classes() {
+        Result* r = self.conn.select("SELECT * FROM classes ORDER BY nom ASC");
+        Vec<Classe*>* out = new Vec<Classe*>();
+        for i in range(r.size()) {
+            Row* row = r.get(i);
+            out.push(new Classe(row.number("id"), row.text("nom")));
+        }
+        return out;
+    }
+
+    Vec<Matiere*>* matieres() {
+        Result* r = self.conn.select("SELECT * FROM matieres ORDER BY nom ASC");
+        Vec<Matiere*>* out = new Vec<Matiere*>();
+        for i in range(r.size()) {
+            Row* row = r.get(i);
+            out.push(new Matiere(row.number("id"), row.text("nom"), row.text("couleur")));
+        }
+        return out;
+    }
+
+    Vec<Professeur*>* professeurs() {
+        Result* r = self.conn.select("SELECT * FROM professeurs ORDER BY nom ASC");
+        Vec<Professeur*>* out = new Vec<Professeur*>();
+        for i in range(r.size()) {
+            Row* row = r.get(i);
+            out.push(new Professeur(row.number("id"), row.text("nom")));
+        }
+        return out;
+    }
+
+    /* --- requete de base, avec les jointures d'affichage --- */
+    str requete_cours(str filtre) {
+        return f"""SELECT c.id, c.classe_id, c.matiere_id, c.prof_id,
+                          c.jour, c.sequence, c.salle,
+                          cl.nom AS classe_nom,
+                          m.nom AS matiere_nom, m.couleur AS matiere_couleur,
+                          p.nom AS prof_nom
+                   FROM cours c
+                   JOIN classes cl ON cl.id = c.classe_id
+                   JOIN matieres m ON m.id = c.matiere_id
+                   JOIN professeurs p ON p.id = c.prof_id
+                   WHERE 1=1 {filtre}
+                   ORDER BY c.jour ASC, c.sequence ASC""";
+    }
+
+    /* Emploi du temps d'une classe (vue collegien). */
+    Vec<Cours*>* pour_classe(int classe_id) {
+        return self.lire(self.requete_cours(f""" AND c.classe_id = {str_of(classe_id)}"""));
+    }
+
+    /* Emploi du temps d'un professeur (vue prof). */
+    Vec<Cours*>* pour_professeur(int prof_id) {
+        return self.lire(self.requete_cours(f""" AND c.prof_id = {str_of(prof_id)}"""));
+    }
+
+    /* Grille complete (vue scolarite). */
+    Vec<Cours*>* tous() {
+        return self.lire(self.requete_cours(""));
+    }
+
+    /* Cours places sur un creneau donne : sert a detecter les conflits. */
+    Vec<Cours*>* sur_creneau(int jour, int sequence) {
+        return self.lire(self.requete_cours(
+            f""" AND c.jour = {str_of(jour)} AND c.sequence = {str_of(sequence)}"""));
+    }
+
+    /* Cherche un conflit pour un cours candidat. Renvoie le cours en
+       conflit, ou null<Cours> s'il n'y en a pas. Utilise la surcharge
+       d'operateur == sur Creneau via Cours.en_conflit_avec. */
+    Cours* conflit_pour(Cours* candidat) {
+        Vec<Cours*>* occupes = self.sur_creneau(candidat.jour, candidat.sequence);
+        for i in range(occupes.len()) {
+            Cours* existant = occupes.get(i);
+            if (existant.id != candidat.id && candidat.en_conflit_avec(existant)) {
+                return existant;
+            }
+        }
+        return null<Cours>;
+    }
+
+    void close() { self.conn.close(); }
+
+    /* --- lecture --- */
+    Vec<Cours*>* lire(str sql) {
+        Result* r = self.conn.select(sql);
+        Vec<Cours*>* out = new Vec<Cours*>();
+        for i in range(r.size()) {
+            Row* row = r.get(i);
+            Cours* c = new Cours(
+                row.number("id"), row.number("classe_id"),
+                row.number("matiere_id"), row.number("prof_id"),
+                row.number("jour"), row.number("sequence"), row.text("salle"));
+            c.classe_nom      = row.text("classe_nom");
+            c.matiere_nom     = row.text("matiere_nom");
+            c.matiere_couleur = row.text("matiere_couleur");
+            c.prof_nom        = row.text("prof_nom");
+            out.push(c);
+        }
+        return out;
+    }
+}

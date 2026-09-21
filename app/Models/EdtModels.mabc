@@ -1,0 +1,173 @@
+/* ================================================================
+ * Emploi du temps — modeles
+ * ================================================================
+ * Trois roles : "scolarite" (modifie l'emploi du temps), "prof"
+ * (consulte le sien), "collegien" (consulte celui de sa classe).
+ *
+ * Le SQL est ecrit en f-strings multi-lignes f"""...""" : la requete
+ * reste lisible telle qu'elle sera executee.
+ *
+ * Depend du framework : Connection, Result, Row, sql_quote, Creneau,
+ * jour_nom, et le module auth (jwt_sign sert au hachage).
+ * ================================================================ */
+
+/* ----------------------------------------------------------------
+ * Utilisateur et role
+ * ---------------------------------------------------------------- */
+struct Utilisateur {
+    int id;
+    str identifiant;
+    str role;        /* "scolarite" | "prof" | "collegien" */
+    int ref_id;      /* prof : son id prof ; collegien : son id classe */
+
+    void init(int id, str identifiant, str role, int ref_id) {
+        self.id = id;
+        self.identifiant = identifiant;
+        self.role = role;
+        self.ref_id = ref_id;
+    }
+
+    bool est_scolarite() { return self.role == "scolarite"; }
+    bool est_prof()      { return self.role == "prof"; }
+    bool est_collegien() { return self.role == "collegien"; }
+
+    /* Libelle lisible du role, pour l'interface. */
+    str role_libelle() {
+        if (self.est_scolarite()) { return "Scolarite"; }
+        if (self.est_prof())      { return "Professeur"; }
+        return "Collegien";
+    }
+}
+
+struct UtilisateurModel {
+    Connection* conn;
+
+    void init(str db_path) {
+        self.conn = new SqliteConnection(db_path);
+        self.conn.run(f"""CREATE TABLE IF NOT EXISTS utilisateurs(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identifiant TEXT NOT NULL UNIQUE,
+            pwd_hash TEXT NOT NULL,
+            role TEXT NOT NULL,
+            ref_id INTEGER NOT NULL DEFAULT 0)""");
+    }
+
+    str hash_pwd(str mot_de_passe) {
+        return jwt_sign(mot_de_passe, "sel-edt-college");
+    }
+
+    int count() {
+        Result* r = self.conn.select("SELECT COUNT(*) AS n FROM utilisateurs");
+        if (r.is_empty()) { return 0; }
+        return r.get(0).get("n").as_int();
+    }
+
+    void creer(str identifiant, str mot_de_passe, str role, int ref_id) {
+        self.conn.run(f"""INSERT INTO utilisateurs(identifiant, pwd_hash, role, ref_id)
+            VALUES({sql_quote(identifiant)}, {sql_quote(self.hash_pwd(mot_de_passe))},
+                   {sql_quote(role)}, {str_of(ref_id)})""");
+    }
+
+    /* Verifie les identifiants. Renvoie null<Utilisateur> si invalides. */
+    Utilisateur* authentifier(str identifiant, str mot_de_passe) {
+        Result* r = self.conn.select(f"""SELECT * FROM utilisateurs
+            WHERE identifiant = {sql_quote(identifiant)}
+              AND pwd_hash = {sql_quote(self.hash_pwd(mot_de_passe))}""");
+        if (r.is_empty()) { return null<Utilisateur>; }
+        return self.vers_utilisateur(r.get(0));
+    }
+
+    Utilisateur* par_identifiant(str identifiant) {
+        Result* r = self.conn.select(
+            f"""SELECT * FROM utilisateurs WHERE identifiant = {sql_quote(identifiant)}""");
+        if (r.is_empty()) { return null<Utilisateur>; }
+        return self.vers_utilisateur(r.get(0));
+    }
+
+    void close() { self.conn.close(); }
+
+    Utilisateur* vers_utilisateur(Row* row) {
+        return new Utilisateur(
+            row.number("id"),
+            row.text("identifiant"),
+            row.text("role"),
+            row.number("ref_id"));
+    }
+}
+
+/* ----------------------------------------------------------------
+ * Classe, matiere, professeur
+ * ---------------------------------------------------------------- */
+struct Classe {
+    int id;
+    str nom;         /* "6eA" */
+    void init(int id, str nom) { self.id = id; self.nom = nom; }
+}
+
+struct Matiere {
+    int id;
+    str nom;
+    str couleur;     /* couleur d'affichage dans la grille */
+    void init(int id, str nom, str couleur) {
+        self.id = id; self.nom = nom; self.couleur = couleur;
+    }
+}
+
+struct Professeur {
+    int id;
+    str nom;
+    void init(int id, str nom) { self.id = id; self.nom = nom; }
+}
+
+/* ----------------------------------------------------------------
+ * Cours — une seance placee dans la grille
+ * ---------------------------------------------------------------- */
+struct Cours {
+    int id;
+    int classe_id;
+    int matiere_id;
+    int prof_id;
+    int jour;        /* 0 = lundi ... 4 = vendredi */
+    int sequence;    /* 0 = 8h, 1 = 9h, ... */
+    str salle;
+    /* champs joints, remplis a la lecture */
+    str classe_nom;
+    str matiere_nom;
+    str matiere_couleur;
+    str prof_nom;
+
+    void init(int id, int classe_id, int matiere_id, int prof_id,
+              int jour, int sequence, str salle) {
+        self.id = id;
+        self.classe_id = classe_id;
+        self.matiere_id = matiere_id;
+        self.prof_id = prof_id;
+        self.jour = jour;
+        self.sequence = sequence;
+        self.salle = salle;
+        self.classe_nom = "";
+        self.matiere_nom = "";
+        self.matiere_couleur = "#868e96";
+        self.prof_nom = "";
+    }
+
+    /* Le creneau occupe par ce cours (structure du framework). */
+    Creneau* creneau() {
+        return new Creneau(self.jour, self.sequence);
+    }
+
+    /* Rendu texte, ex : "Lundi 08h00-08h55 — Maths (M. Diallo, salle B12)" */
+    str show() {
+        return f"""{self.creneau().show()} — {self.matiere_nom} ({self.prof_nom}, salle {self.salle})""";
+    }
+
+    /* Deux cours entrent en conflit s'ils occupent le meme creneau ET
+       partagent la classe, le professeur ou la salle. */
+    bool en_conflit_avec(Cours* autre) {
+        if (!(self.creneau() == autre.creneau())) { return false; }
+        if (self.classe_id == autre.classe_id) { return true; }
+        if (self.prof_id == autre.prof_id) { return true; }
+        if (self.salle == autre.salle && self.salle != "") { return true; }
+        return false;
+    }
+}

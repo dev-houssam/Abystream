@@ -1,0 +1,45 @@
+/* ================================================================
+ * Emploi du temps — routes web
+ * ================================================================
+ *   GET  /                    connexion
+ *   POST /login               authentifie (pose le cookie JWT)
+ *   GET  /logout              deconnexion
+ *   GET  /edt                 grille selon le role
+ *   GET  /scolarite           edition (scolarite uniquement)
+ *   POST /scolarite/cours     ajoute un cours (verifie les conflits)
+ *   POST /scolarite/supprimer retire un cours
+ * ================================================================ */
+
+NodeGroup* build_routes() {
+    return new NodeGroup(
+        "",
+        new GET(route("/"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.connexion(req, res);
+        }),
+        new POST(route("/login"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.login(req, res);
+        }),
+        new GET(route("/logout"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.logout(req, res);
+        }),
+        new GET(route("/edt"), (Request* req, Response* res) => {
+            EdtController* c = new EdtController();
+            c.index(req, res);
+        }),
+        new GET(route("/scolarite"), (Request* req, Response* res) => {
+            ScolariteController* c = new ScolariteController();
+            c.edition(req, res);
+        }),
+        new POST(route("/scolarite/cours"), (Request* req, Response* res) => {
+            ScolariteController* c = new ScolariteController();
+            c.ajouter(req, res);
+        }),
+        new POST(route("/scolarite/supprimer"), (Request* req, Response* res) => {
+            ScolariteController* c = new ScolariteController();
+            c.supprimer(req, res);
+        })
+    );
+}

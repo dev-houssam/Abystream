@@ -1,0 +1,6 @@
+/* Agregateur de l'application emploi du temps. */
+import "Models/EdtModels.mabc"
+import "Models/EdtModel.mabc"
+import "Config/app.mabc"
+import "Controllers/EdtControllers.mabc"
+import "Routes/web.mabc"
