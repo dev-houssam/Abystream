@@ -1,11 +1,11 @@
 # Abystream
-Un écosystème logiciel cohérent autour de MATL-ABC
-
----
-- EN :
-
+FR: Un écosystème logiciel cohérent autour de MATL-ABC
 
 # Abystream : Full-stack web framework for MATL-ABC.
+
+<p align="center">
+  <img src="assets/abystream-architecture.png" alt="Architecture d'Abystream" width="800">
+</p>
 
 Abystream is a full-stack web framework designed for the MATL-ABC
 programming language.
