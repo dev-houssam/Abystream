@@ -55,15 +55,45 @@ Application
 
 ## Example
 
-```matl
-// Example application
+A route group can be declared using HTTP method nodes and controller
+handlers.
 
-route("/hello", GET, hello)
+For example:
 
-func hello(request: Request) -> Response {
-    return Response.text("Hello, Abystream!")
+```cpp
+NodeGroup* build_routes() {
+    return new NodeGroup(
+        "",
+        new GET(route("/"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.connexion(req, res);
+        }),
+        new POST(route("/login"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.login(req, res);
+        }),
+        new GET(route("/logout"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.logout(req, res);
+        })
+    );
 }
 ```
+
+Routes can therefore be associated directly with controller methods.
+
+For example:
+```txt
+GET  /                    → AuthController.connexion()
+POST /login               → AuthController.login()
+GET  /logout              → AuthController.logout()
+GET  /edt                 → EdtController.index()
+GET  /scolarite           → ScolariteController.edition()
+POST /scolarite/cours     → ScolariteController.ajouter()
+POST /scolarite/supprimer → ScolariteController.supprimer()
+```
+The routing system is based on a NodeGroup containing HTTP method
+nodes such as GET and POST.
 
 ## Why Abystream?
 
