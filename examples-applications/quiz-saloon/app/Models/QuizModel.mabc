@@ -1,0 +1,111 @@
+/* ================================================================
+ * Salon de Quiz — modele Quiz
+ * ================================================================
+ * Les questions du quiz portent sur le framework Abystream. Chaque
+ * question a un intitule, quatre reponses, l'index de la bonne reponse,
+ * et un niveau (0 = gratuit, 1 = premium reserve aux abonnes).
+ *
+ * Depend du framework : Connection, SqliteConnection, Result, Row,
+ * sql_quote.
+ * ================================================================ */
+
+struct Question {
+    int id;
+    str prompt;
+    str choice_a;
+    str choice_b;
+    str choice_c;
+    str choice_d;
+    int correct;     /* 0..3 : index de la bonne reponse */
+    int premium;     /* 0 = gratuit, 1 = premium */
+
+    void init(int id, str prompt, str a, str b, str c, str d,
+              int correct, int premium) {
+        self.id = id;
+        self.prompt = prompt;
+        self.choice_a = a;
+        self.choice_b = b;
+        self.choice_c = c;
+        self.choice_d = d;
+        self.correct = correct;
+        self.premium = premium;
+    }
+
+    /* Le texte d'un choix par index (0..3). */
+    str choice(int i) {
+        if (i == 0) { return self.choice_a; }
+        if (i == 1) { return self.choice_b; }
+        if (i == 2) { return self.choice_c; }
+        if (i == 3) { return self.choice_d; }
+        return "";
+    }
+}
+
+struct QuizModel {
+    Connection* conn;
+
+    void init(str db_path) {
+        self.conn = new SqliteConnection(db_path);
+        self.conn.run(
+            "CREATE TABLE IF NOT EXISTS questions("
+            + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            + "prompt TEXT NOT NULL, "
+            + "choice_a TEXT NOT NULL, choice_b TEXT NOT NULL, "
+            + "choice_c TEXT NOT NULL, choice_d TEXT NOT NULL, "
+            + "correct INTEGER NOT NULL, "
+            + "premium INTEGER NOT NULL DEFAULT 0)");
+    }
+
+    int count() {
+        Result* r = self.conn.select("SELECT COUNT(*) AS n FROM questions");
+        if (r.is_empty()) { return 0; }
+        return r.get(0).get("n").as_int();
+    }
+
+    void create(str prompt, str a, str b, str c, str d,
+                int correct, int premium) {
+        self.conn.run(
+            "INSERT INTO questions(prompt, choice_a, choice_b, choice_c, "
+            + "choice_d, correct, premium) VALUES("
+            + sql_quote(prompt) + ", " + sql_quote(a) + ", " + sql_quote(b)
+            + ", " + sql_quote(c) + ", " + sql_quote(d) + ", "
+            + str_of(correct) + ", " + str_of(premium) + ")");
+    }
+
+    /* Questions accessibles selon l'abonnement.
+       premium_access = true -> toutes ; false -> gratuites seulement. */
+    Vec<Question*>* playable(bool premium_access) {
+        str sql = "SELECT * FROM questions";
+        if (!premium_access) { sql = sql + " WHERE premium = 0"; }
+        sql = sql + " ORDER BY id ASC";
+        return self.to_questions(self.conn.select(sql));
+    }
+
+    Question* find(int id) {
+        Result* r = self.conn.select(
+            "SELECT * FROM questions WHERE id = " + str_of(id));
+        if (r.is_empty()) { return cast<Question*>(0); }
+        return self.row_to_question(r.get(0));
+    }
+
+    void close() { self.conn.close(); }
+
+    /* --- helpers --- */
+    Question* row_to_question(Row* row) {
+        return new Question(
+            row.number("id"),
+            row.text("prompt"),
+            row.text("choice_a"), row.text("choice_b"),
+            row.text("choice_c"), row.text("choice_d"),
+            row.number("correct"),
+            row.number("premium"));
+    }
+
+    Vec<Question*>* to_questions(Result* r) {
+        Vec<Question*>* qs = new Vec<Question*>();
+        for i in range(r.size()) {
+            qs.push(self.row_to_question(r.get(i)));
+        }
+        return qs;
+    }
+}

@@ -1,0 +1,160 @@
+/* ================================================================
+ * Dictionnaire MATL-ABC — configuration applicative
+ * ================================================================
+ * Host et port sont lus depuis l'environnement (idiome MATL-ABC :
+ * getenv avec valeur de repli), ce qui permet de les surcharger en
+ * conteneur sans recompiler :  HOST=0.0.0.0  PORT=9000  ./dico_app
+ * ================================================================ */
+
+/* Lit une variable d'environnement, ou renvoie `fallback` si absente. */
+str env_or(str name, str fallback) {
+    char* raw = getenv(cstr_of(name));
+    if (raw == cast<char*>(0)) { return fallback; }
+    str v = str_from(raw);
+    if (v == "") { return fallback; }
+    return v;
+}
+
+/* Hote d'ecoute : $HOST, defaut "0.0.0.0" (joignable hors conteneur). */
+str app_host() {
+    return env_or("HOST", "0.0.0.0");
+}
+
+/* Port d'ecoute : $PORT, defaut 8080. */
+int app_port() {
+    return env_or("PORT", "8080").to_int();
+}
+
+/* Chemin de la base : $DB_PATH, defaut "database/dico.db". */
+str app_db_path() {
+    return env_or("DB_PATH", "database/dico.db");
+}
+
+void register_middlewares() {
+    /* aucun middleware pour cette demo */
+}
+
+/* Peuple la base avec les termes de la doc MATL-ABC, si elle est vide.
+   Appele au demarrage par le main generique via seed_if_empty(). */
+void seed_if_empty() {
+    TermModel* model = new TermModel(app_db_path());
+    if (model.count() > 0) {
+        model.close();
+        return;
+    }
+
+    /* --- mots-cles --- */
+    model.create("struct", "mot-cle",
+        "Declare une structure avec champs et methodes. Brique centrale : MATL-ABC privilegie les structs a methodes plutot que les fonctions libres.",
+        "struct Nom { champ; void methode() { ... } }",
+        "struct Point { int x; int y; void init(int x, int y) { self.x = x; self.y = y; } }",
+        "type,objet,poo");
+    model.create("header", "mot-cle",
+        "Declare un contrat (interface) que des structs implementent via 'implements'.",
+        "header Nom { type methode(); }",
+        "header Forme { float aire(); }",
+        "interface,contrat,polymorphisme");
+    model.create("implements", "mot-cle",
+        "Indique qu'une struct respecte un header donne.",
+        "struct S implements Header { ... }",
+        "struct Cercle implements Forme { float aire() { return 3.14 * self.r * self.r; } }",
+        "interface,contrat");
+    model.create("match", "mot-cle",
+        "Filtrage par motif. Peut s'utiliser en instruction ou en expression. Mot RESERVE : ne pas utiliser comme identifiant.",
+        "match(valeur) { Motif => { ... } _ => { ... } }",
+        "match(code) { 200 => { println(\"OK\"); } _ => { println(\"autre\"); } }",
+        "controle,pattern,reserve");
+    model.create("for", "mot-cle",
+        "Boucle sur un intervalle (range) ou une collection.",
+        "for i in range(n) { ... }   |   for x in collection { ... }",
+        "for i in range(3) { println(str_of(i)); }",
+        "boucle,iteration");
+    model.create("while", "mot-cle",
+        "Boucle tant qu'une condition est vraie.",
+        "while (condition) { ... }",
+        "while (i < n) { i = i + 1; }",
+        "boucle,iteration");
+
+    /* --- types --- */
+    model.create("int", "type",
+        "Entier signe machine (i32).",
+        "int x = 42;",
+        "int somme = a + b;",
+        "primitif,nombre");
+    model.create("float", "type",
+        "Nombre a virgule flottante.",
+        "float f = 3.14;",
+        "float moyenne = total / cast<float>(n);",
+        "primitif,nombre");
+    model.create("bool", "type",
+        "Booleen : true ou false.",
+        "bool ok = true;",
+        "bool valide = (x > 0);",
+        "primitif,logique");
+    model.create("str", "type",
+        "Chaine de caracteres. Concatenation avec '+'. slice(a,b) est borne (securise).",
+        "str s = \"bonjour\";",
+        "str salut = \"Bonjour \" + nom;",
+        "primitif,texte,chaine");
+    model.create("Vec", "type",
+        "Tableau dynamique generique. push/get/len. Realloc automatique.",
+        "Vec<T>* v = new Vec<T>();",
+        "Vec<int>* xs = new Vec<int>(); xs.push(1); xs.push(2);",
+        "collection,generique,tableau");
+    model.create("rawptr", "type",
+        "Pointeur brut non type, pour l'interop native (FFI).",
+        "rawptr p = malloc(cast<usize>(n));",
+        "rawptr buf = malloc(cast<usize>(1024));",
+        "pointeur,ffi,bas-niveau");
+
+    /* --- fonctions built-in --- */
+    model.create("println", "fonction",
+        "Affiche une chaine suivie d'un retour a la ligne.",
+        "void println(str s)",
+        "println(\"Bonjour MATL-ABC\");",
+        "io,sortie,affichage");
+    model.create("str_of", "fonction",
+        "Convertit un entier (ou float) en chaine.",
+        "str str_of(int n)",
+        "str s = str_of(42);",
+        "conversion,texte");
+    model.create("range", "fonction",
+        "Genere un intervalle d'entiers pour une boucle for.",
+        "range(n)  |  range(debut, fin)",
+        "for i in range(1, 5) { print(str_of(i)); }",
+        "boucle,iteration");
+    model.create("cast", "fonction",
+        "Conversion de type explicite.",
+        "cast<Type>(valeur)",
+        "usize taille = cast<usize>(n * 4);",
+        "conversion,type");
+    model.create("new", "fonction",
+        "Alloue et initialise une struct (appelle init).",
+        "new Struct(args)",
+        "Point* p = new Point(3, 4);",
+        "allocation,objet");
+
+    /* --- idiomes --- */
+    model.create("self", "idiome",
+        "Reference l'instance courante dans une methode. &self renvoie un pointeur (chainage fluide).",
+        "self.champ  |  return &self;",
+        "Builder* set(str v) { self.val = v; return &self; }",
+        "methode,chainage,objet");
+    model.create("chainage fluide", "idiome",
+        "Retourner &self permet d'enchainer les appels de methodes (fluent API).",
+        "obj.a(...).b(...).c(...)",
+        "resp.status(200).body(\"ok\").location(\"/\");",
+        "api,fluent,builder");
+    model.create("closures sans capture", "idiome",
+        "Les lambdas ne capturent PAS le scope englobant. Instancier ce dont on a besoin a l'interieur.",
+        "(args) => { ... }",
+        "new GET(route(\"/\"), (Request* r, Response* s) => { new Ctrl().index(r, s); })",
+        "lambda,closure,piege");
+    model.create("gestion d'erreur par exception", "idiome",
+        "throw leve une exception ; les structs d'erreur implementent le header Exception.",
+        "throw new ServerError(\"message\");",
+        "if (x < 0) { throw new ServerError(\"negatif\"); }",
+        "erreur,exception");
+
+    model.close();
+}

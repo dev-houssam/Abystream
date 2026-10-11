@@ -1,0 +1,55 @@
+/* ================================================================
+ * Blog "Les Passionnes de MATL-ABC" — HomeController
+ * ================================================================
+ * Page d'accueil : liste des articles, du plus recent au plus ancien.
+ * Le controleur recupere les donnees via PostModel, construit le corps
+ * en Html*, puis l'insere dans le layout via le moteur de template.
+ * ================================================================ */
+
+struct HomeController {
+    void init() { }
+
+    /* GET / : liste des articles. */
+    void index(Request* request, Response* response) {
+        PostModel* model = new PostModel(app_db_path());
+        Vec<Post*>* posts = model.all();
+
+        /* Construire le corps : un bloc par article. */
+        Html* body = div();
+
+        if (posts.len() == 0) {
+            body.child(p("Aucun article pour l'instant. "
+                       + "Soyez le premier a partager votre passion !"));
+        }
+
+        for i in range(posts.len()) {
+            Post* post = posts.get(i);
+            Html* card = new Html("div");
+            card.attr("class", "post");
+
+            /* titre cliquable vers la page de l'article */
+            Html* h = new Html("h2");
+            h.child(a("/posts/" + str_of(post.id), post.title));
+            card.child(h);
+
+            /* meta : auteur et date */
+            Html* meta = new Html("p");
+            meta.attr("class", "meta");
+            meta.content("par " + post.author + " — " + post.created_at);
+            card.child(meta);
+
+            body.child(card);
+        }
+
+        model.close();
+
+        /* Inserer le corps dans le layout. */
+        Template* layout = new Template("app/Views/layout.html");
+        str page = layout
+            .set("title", "Accueil")
+            .setHtml("content", body)
+            .render();
+
+        response.body(page).status(200);
+    }
+}

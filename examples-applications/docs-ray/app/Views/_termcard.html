@@ -1,0 +1,8 @@
+<div class="term">
+<h2><a href="/term/{{ id }}">{{ name }}</a><span class="cat">{{ category }}</span></h2>
+<p class="summary">{{ summary }}</p>
+{{#if syntax}}<pre>{{ syntax | escape }}</pre>{{/if}}
+<div class="tags chips">
+{{#each tagList}}<a class="chip" href="/search?tag={{ name }}">{{ name }}</a>{{/each}}
+</div>
+</div>

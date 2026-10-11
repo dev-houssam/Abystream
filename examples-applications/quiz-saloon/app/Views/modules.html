@@ -1,0 +1,10 @@
+<div class="card">
+<h2>Modules charges</h2>
+<p>Les plugins enregistres dans le registre au demarrage. Le module de paiement est branche via le contrat <code>PaymentProvider</code>.</p>
+{{#each modules}}
+<div class="card" style="box-shadow:none;border:1px solid #e9ecef">
+<h3>{{ name }} <span class="badge">v{{ version }}</span> <span class="badge" style="background:#37b24d">{{ enabled }}</span></h3>
+<p>{{ description }}</p>
+</div>
+{{/each}}
+</div>

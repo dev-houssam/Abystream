@@ -1,0 +1,567 @@
+
+struct SvgController {
+    void init(Request* request, Response* response) { 
+            str page = """
+
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1200"
+     height="900"
+     viewBox="0 0 1200 900">
+
+
+<defs>
+
+    <!-- Background -->
+    <linearGradient id="bg" x2="0" y2="1">
+        <stop stop-color="#090d1a"/>
+        <stop offset="1" stop-color="#243b70"/>
+    </linearGradient>
+
+
+    <linearGradient id="card" x2="1" y2="1">
+        <stop stop-color="#ffffff"/>
+        <stop offset="1" stop-color="#dbeafe"/>
+    </linearGradient>
+
+
+    <filter id="shadow">
+        <feDropShadow dx="0"
+                      dy="10"
+                      stdDeviation="12"
+                      flood-opacity="0.3"/>
+    </filter>
+
+
+    <filter id="glow">
+        <feGaussianBlur stdDeviation="8"/>
+    </filter>
+
+
+    <style>
+
+        .title {
+            font-family:Arial;
+            font-weight:bold;
+        }
+
+        .text {
+            font-family:Arial;
+        }
+
+
+        .card {
+            cursor:pointer;
+            transition:0.3s;
+        }
+
+
+    </style>
+
+
+</defs>
+
+
+
+<!-- ========================= -->
+<!-- FONCTION JS SVG -->
+<!-- ========================= -->
+
+<script><![CDATA[
+
+function fractalMode(){
+
+    document
+    .getElementById("portal")
+    .setAttribute("fill","#ff00ff");
+
+
+    document
+    .getElementById("message")
+    .textContent =
+    "FRACTAL UNIVERSE ACTIVATED";
+
+
+}
+
+
+function speedMode(){
+
+    document
+    .getElementById("graph")
+    .setAttribute(
+    "dur",
+    "0.5s");
+
+}
+
+
+function creativeMode(){
+
+    document
+    .getElementById("background")
+    .setAttribute(
+    "fill",
+    "#301934");
+
+}
+
+
+]]></script>
+
+
+
+
+<!-- ========================= -->
+<!-- BACKGROUND -->
+<!-- ========================= -->
+
+
+<rect id="background"
+      width="1200"
+      height="900"
+      fill="url(#bg)"/>
+
+
+
+<!-- étoiles -->
+
+<g fill="white">
+
+<circle cx="80" cy="80" r="3">
+<animate attributeName="opacity"
+values="0.2;1;0.2"
+dur="3s"
+repeatCount="indefinite"/>
+</circle>
+
+
+<circle cx="250" cy="130" r="4">
+<animate attributeName="r"
+values="2;6;2"
+dur="2s"
+repeatCount="indefinite"/>
+</circle>
+
+
+<circle cx="1050" cy="120" r="3">
+<animate attributeName="opacity"
+values="1;0.1;1"
+dur="4s"
+repeatCount="indefinite"/>
+</circle>
+
+
+</g>
+
+
+
+
+<!-- ========================= -->
+<!-- HEADER -->
+<!-- ========================= -->
+
+
+<rect x="60"
+      y="40"
+      width="1080"
+      height="130"
+      rx="30"
+      fill="white"
+      opacity="0.95"
+      filter="url(#shadow)"/>
+
+
+<text x="100"
+      y="105"
+      font-size="45"
+      class="title"
+      fill="#111827">
+
+SVG Universe
+
+</text>
+
+
+<text x="100"
+      y="140"
+      font-size="20"
+      class="text"
+      fill="#667085">
+
+Une page web entière dans un dessin vectoriel
+
+</text>
+
+
+
+
+<!-- MENU -->
+
+<a href="/">
+
+<rect x="800"
+      y="85"
+      width="130"
+      height="50"
+      rx="25"
+      fill="#2563eb"/>
+
+<text x="830"
+      y="117"
+      fill="white">
+
+SVG W3C
+
+</text>
+
+</a>
+
+
+
+<rect x="960"
+      y="85"
+      width="100"
+      height="50"
+      rx="25"
+      fill="#16a34a"
+      onclick="creativeMode()"/>
+
+
+<text x="985"
+      y="117"
+      fill="white">
+
+Theme
+
+</text>
+
+
+
+<rect x="1080"
+      y="85"
+      width="50"
+      height="50"
+      rx="25"
+      fill="#9333ea"
+      onclick="fractalMode()"/>
+
+
+<text x="1092"
+      y="118"
+      font-size="25"
+      fill="white">
+
+∞
+
+</text>
+
+
+
+
+
+<!-- ========================= -->
+<!-- CARDS -->
+<!-- ========================= -->
+
+
+<!-- CARD 1 -->
+
+
+<g onclick="speedMode()">
+
+
+<rect x="60"
+      y="230"
+      width="330"
+      height="240"
+      rx="25"
+      fill="url(#card)"
+      filter="url(#shadow)"/>
+
+
+<circle cx="160"
+        cy="310"
+        r="55"
+        fill="#2563eb"/>
+
+
+<text x="135"
+      y="330"
+      font-size="50">
+
+⚡
+
+</text>
+
+
+<text x="100"
+      y="400"
+      font-size="30"
+      class="title">
+
+Rapide
+
+</text>
+
+
+<text x="100"
+      y="435"
+      class="text">
+
+Clique pour accélérer
+
+</text>
+
+
+</g>
+
+
+
+
+
+<!-- CARD 2 -->
+
+
+<g onclick="creativeMode()">
+
+
+<rect x="435"
+      y="230"
+      width="330"
+      height="240"
+      rx="25"
+      fill="url(#card)"
+      filter="url(#shadow)"/>
+
+
+<circle cx="535"
+        cy="310"
+        r="55"
+        fill="#16a34a"/>
+
+
+<text x="510"
+      y="330"
+      font-size="50">
+
+✎
+
+</text>
+
+
+<text x="475"
+      y="400"
+      font-size="30"
+      class="title">
+
+Créatif
+
+</text>
+
+
+<text x="475"
+      y="435"
+      class="text">
+
+Change le monde
+
+</text>
+
+
+</g>
+
+
+
+
+
+
+<!-- CARD 3 FRACTAL -->
+
+
+<g onclick="fractalMode()">
+
+
+<rect x="810"
+      y="230"
+      width="330"
+      height="240"
+      rx="25"
+      fill="url(#card)"
+      filter="url(#shadow)"/>
+
+
+
+<circle id="portal"
+        cx="930"
+        cy="310"
+        r="60"
+        fill="#9333ea">
+
+
+<animateTransform
+attributeName="transform"
+type="rotate"
+from="0 930 310"
+to="360 930 310"
+dur="5s"
+repeatCount="indefinite"/>
+
+
+</circle>
+
+
+
+<!-- SVG dans SVG -->
+
+
+<svg x="880"
+     y="260"
+     width="100"
+     height="100"
+     viewBox="0 0 100 100">
+
+
+<circle cx="50"
+        cy="50"
+        r="45"
+        fill="none"
+        stroke="white"
+        stroke-width="3"/>
+
+
+<circle cx="50"
+        cy="50"
+        r="25"
+        fill="none"
+        stroke="white"
+        stroke-width="3"/>
+
+
+<circle cx="50"
+        cy="50"
+        r="8"
+        fill="white"/>
+
+
+</svg>
+
+
+
+<text x="850"
+      y="410"
+      font-size="30"
+      class="title">
+
+Fractal
+
+</text>
+
+
+<text x="850"
+      y="445"
+      class="text">
+
+Entre dans le portail
+
+</text>
+
+
+
+</g>
+
+
+
+
+
+
+<!-- ========================= -->
+<!-- GRAPH -->
+<!-- ========================= -->
+
+
+<rect x="60"
+      y="530"
+      width="1080"
+      height="250"
+      rx="30"
+      fill="white"
+      opacity="0.95"/>
+
+
+
+<text x="100"
+      y="590"
+      font-size="30"
+      class="title">
+
+Activité SVG
+
+</text>
+
+
+
+
+<polyline
+points="
+120,700
+250,650
+370,690
+500,610
+650,670
+800,580
+980,620"
+fill="none"
+stroke="#2563eb"
+stroke-width="8">
+
+
+<animate
+id="graph"
+attributeName="stroke-width"
+values="4;12;4"
+dur="2s"
+repeatCount="indefinite"/>
+
+
+</polyline>
+
+
+
+
+<g fill="#2563eb">
+
+<circle cx="120" cy="700" r="10"/>
+<circle cx="250" cy="650" r="10"/>
+<circle cx="370" cy="690" r="10"/>
+<circle cx="500" cy="610" r="10"/>
+<circle cx="650" cy="670" r="10"/>
+<circle cx="800" cy="580" r="10"/>
+<circle cx="980" cy="620" r="10"/>
+
+</g>
+
+
+
+
+<!-- MESSAGE -->
+
+<text id="message"
+      x="400"
+      y="850"
+      font-size="25"
+      fill="white"
+      class="text">
+
+Made with pure SVG ❤️
+
+</text>
+
+
+
+</svg>
+            """;
+        response.body(page).status(200).contentType("image/svg+xml");
+    }
+
+}

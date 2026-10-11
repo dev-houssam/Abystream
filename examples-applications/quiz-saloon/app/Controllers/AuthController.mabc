@@ -1,0 +1,126 @@
+/* ================================================================
+ * Salon de Quiz — AuthController
+ * ================================================================
+ * Inscription, connexion (delivre un JWT), et paiement de l'abonnement
+ * premium via le module Stripe (simule).
+ *
+ *   showLogin  GET  /               page de connexion
+ *   login      POST /login          verifie les identifiants -> JWT
+ *   registerU  POST /register       cree un compte
+ *   pay        POST /pay            paie l'abonnement premium (Stripe)
+ * ================================================================ */
+
+struct AuthController {
+    void init() { }
+
+    /* GET / : page de connexion / inscription. */
+    void showLogin(Request* request, Response* response) {
+        Template* t = new Template("app/Views/login.html");
+        str body = t.render();
+        self.page(response, "Connexion", body);
+    }
+
+    /* POST /login : verifie identifiants, renvoie un JWT en JSON. */
+    void login(Request* request, Response* response) {
+        str username = request.form("username");
+        str password = request.form("password");
+
+        UserModel* users = new UserModel(app_db_path());
+        User* u = users.authenticate(username, password);
+        if (u == cast<User*>(0)) {
+            users.close();
+            response.status(401).body(
+                "{\"ok\":false,\"error\":\"identifiants invalides\"}");
+            return;
+        }
+
+        str token = self.make_token(u);
+        users.close();
+        response.status(200).body(
+            "{\"ok\":true,\"token\":\"" + token + "\",\"premium\":"
+            + self.bool_json(u.premium) + "}");
+    }
+
+    /* POST /register : cree un compte. */
+    void registerU(Request* request, Response* response) {
+        str username = request.form("username");
+        str password = request.form("password");
+        if (username == "" || password == "") {
+            response.status(400).body(
+                "{\"ok\":false,\"error\":\"champs requis\"}");
+            return;
+        }
+
+        UserModel* users = new UserModel(app_db_path());
+        bool created = users.register_user(username, password);
+        users.close();
+        if (!created) {
+            response.status(409).body(
+                "{\"ok\":false,\"error\":\"nom deja pris\"}");
+            return;
+        }
+        response.status(200).body("{\"ok\":true}");
+    }
+
+    /* POST /pay : paie l'abonnement premium via le plugin Stripe. */
+    void pay(Request* request, Response* response) {
+        str username = request.form("username");
+        if (username == "") {
+            response.status(400).body(
+                "{\"ok\":false,\"error\":\"utilisateur requis\"}");
+            return;
+        }
+
+        /* le module de paiement est fourni par le registre de plugins */
+        if (!g_plugins.has_payment()) {
+            response.status(500).body(
+                "{\"ok\":false,\"error\":\"aucun module de paiement\"}");
+            return;
+        }
+        PaymentProvider* pay = payment_provider();
+        PaymentResult* result = pay.charge(
+            app_premium_price(), "EUR", "Abonnement premium Quiz Abystream");
+
+        if (!result.ok) {
+            response.status(402).body(
+                "{\"ok\":false,\"error\":\"" + result.message + "\"}");
+            return;
+        }
+
+        /* paiement accepte -> activer premium et delivrer un nouveau JWT */
+        UserModel* users = new UserModel(app_db_path());
+        users.grant_premium(username);
+        User* u = users.find_by_name(username);
+        str token = "";
+        if (u != cast<User*>(0)) { token = self.make_token(u); }
+        users.close();
+
+        response.status(200).body(
+            "{\"ok\":true,\"provider\":\"" + pay.provider_name()
+            + "\",\"transaction\":\"" + result.transaction_id
+            + "\",\"token\":\"" + token + "\"}");
+    }
+
+    /* ---------------------------------------------------------------
+     * Helpers
+     * --------------------------------------------------------------- */
+
+    /* Fabrique un JWT pour un utilisateur (nom + statut premium). */
+    str make_token(User* u) {
+        str payload = "{\"user\":\"" + u.username
+            + "\",\"premium\":" + self.bool_json(u.premium) + "}";
+        return jwt_encode(payload, app_jwt_secret());
+    }
+
+    str bool_json(bool b) {
+        if (b) { return "true"; }
+        return "false";
+    }
+
+    void page(Response* response, str title, str body) {
+        Template* layout = new Template("app/Views/layout.html");
+        layout.set("title", title);
+        layout.set("content", body);
+        response.body(layout.render()).status(200);
+    }
+}

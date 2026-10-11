@@ -1,0 +1,40 @@
+/* ================================================================
+ * Blog "Les Passionnes de MATL-ABC" — routes web
+ * ================================================================
+ * Toutes les routes vivent ICI, pas dans le main. build_routes() est
+ * appele par le main generique. Les controleurs sont sans etat : on les
+ * instancie dans chaque closure (les lambdas ne capturent pas le scope
+ * englobant).
+ *
+ *   GET  /                     HomeController.index
+ *   GET  /posts/new            PostController.form
+ *   POST /posts                PostController.create
+ *   GET  /posts/:id            PostController.show
+ *   POST /posts/:id/delete     PostController.remove
+ * ================================================================ */
+
+NodeGroup* build_routes() {
+    return new NodeGroup(
+        "",
+        new GET(route("/"), (Request* req, Response* res) => {
+            HomeController* home = new HomeController();
+            home.index(req, res);
+        }),
+        new GET(route("/posts/new"), (Request* req, Response* res) => {
+            PostController* posts = new PostController();
+            posts.form(req, res);
+        }),
+        new POST(route("/posts"), (Request* req, Response* res) => {
+            PostController* posts = new PostController();
+            posts.create(req, res);
+        }),
+        new GET(route("^/posts/([0-9]+)$"), (Request* req, Response* res) => {
+            PostController* posts = new PostController();
+            posts.show(req, res);
+        }),
+        new POST(route("^/posts/([0-9]+)/delete$"), (Request* req, Response* res) => {
+            PostController* posts = new PostController();
+            posts.remove(req, res);
+        })
+    );
+}

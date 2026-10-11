@@ -1,0 +1,55 @@
+<div class="card">
+<h2>Connexion</h2>
+<label>Nom d'utilisateur</label>
+<input id="username" value="demo">
+<label>Mot de passe</label>
+<input id="password" type="password" value="demo">
+<div style="margin-top:1rem">
+<button onclick="login()">Se connecter</button>
+<button onclick="register()" style="background:#adb5bd">Creer un compte</button>
+<button id="enterbtn" onclick="enterRoom()" style="display:none;background:#37b24d">Entrer dans le salon ▶</button>
+</div>
+<div id="authmsg"></div>
+</div>
+
+<div class="card" id="premiumcard" style="display:none">
+<h2>Abonnement premium <span class="badge">Stripe</span></h2>
+<p>Debloquez les quiz avances sur Abystream pour 5,00 EUR (paiement simule).</p>
+<button onclick="pay()">Payer 5,00 EUR</button>
+<div id="paymsg"></div>
+</div>
+
+<script>
+let currentUser = null;
+function show(id,txt,ok){document.getElementById(id).innerHTML='<div class="msg '+(ok?'ok':'ko')+'">'+txt+'</div>';}
+async function login(){
+  const u=document.getElementById('username').value, p=document.getElementById('password').value;
+  const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'username='+encodeURIComponent(u)+'&password='+encodeURIComponent(p)});
+  const d=await r.json();
+  if(d.ok){currentUser=u;localStorage.setItem('jwt',d.token);localStorage.setItem('user',u);
+    if(d.premium){
+      show('authmsg','Connecte (premium) ! Redirection vers le salon…',true);
+      document.getElementById('premiumcard').style.display='none';
+      setTimeout(()=>location.href='/room',900);
+    } else {
+      show('authmsg','Connecte ! Payez le premium ci-dessous, ou entrez directement dans le salon.',true);
+      document.getElementById('premiumcard').style.display='block';
+      document.getElementById('enterbtn').style.display='inline-block';
+    }
+  }else show('authmsg',d.error||'echec',false);
+}
+function enterRoom(){ location.href='/room'; }
+async function register(){
+  const u=document.getElementById('username').value, p=document.getElementById('password').value;
+  const r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'username='+encodeURIComponent(u)+'&password='+encodeURIComponent(p)});
+  const d=await r.json();
+  show('authmsg',d.ok?'Compte cree, connectez-vous':d.error,d.ok);
+}
+async function pay(){
+  const u=localStorage.getItem('user');
+  const r=await fetch('/pay',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'username='+encodeURIComponent(u)});
+  const d=await r.json();
+  if(d.ok){localStorage.setItem('jwt',d.token);show('paymsg','Paiement accepte via '+d.provider+' — transaction '+d.transaction+'. Redirection…',true);setTimeout(()=>location.href='/room',1200);}
+  else show('paymsg',d.error||'echec du paiement',false);
+}
+</script>

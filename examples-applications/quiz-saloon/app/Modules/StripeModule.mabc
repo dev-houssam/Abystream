@@ -1,0 +1,64 @@
+/* ================================================================
+ * Salon de Quiz — module externe Stripe (SIMULE)
+ * ================================================================
+ * Exemple de PLUGIN : un module externe qui implemente le contrat
+ * PaymentProvider du framework. Ici, Stripe est SIMULE — il ne se
+ * connecte pas reellement a l'API Stripe. C'est une introduction au
+ * systeme de plugins : montrer qu'on branche un fournisseur tiers via
+ * un simple `implements`, sans toucher au code metier.
+ *
+ * Pour passer en reel plus tard : remplacer le corps de charge() par un
+ * appel HTTP a l'API Stripe (via un shim natif), sans changer le
+ * contrat ni les controleurs.
+ *
+ * Depend du framework : PaymentProvider, PaymentResult, ModuleInfo.
+ * ================================================================ */
+
+struct StripeModule implements PaymentProvider {
+    str api_key;        /* cle API (simulee)                          */
+    int counter;        /* compteur pour generer des ids de transaction */
+
+    void init(str api_key) {
+        self.api_key = api_key;
+        self.counter = 0;
+    }
+
+    /* Nom du fournisseur (affiche cote UI). */
+    str provider_name() {
+        return "Stripe (simule)";
+    }
+
+    /* Simule un paiement. Regles de simulation :
+       - montant <= 0        -> echec (montant invalide)
+       - cle API vide        -> echec (non configure)
+       - sinon               -> succes, avec un id de transaction genere
+       Aucune connexion reseau : c'est une demonstration de plugin. */
+    PaymentResult* charge(int amount_cents, str currency, str description) {
+        if (self.api_key == "") {
+            return new PaymentResult(false, "",
+                "Stripe non configure (cle API manquante)");
+        }
+        if (amount_cents <= 0) {
+            return new PaymentResult(false, "",
+                "Montant invalide : " + str_of(amount_cents));
+        }
+
+        /* generer un identifiant de transaction pseudo-unique */
+        self.counter = self.counter + 1;
+        str txid = "ch_sim_" + str_of(amount_cents) + "_" + str_of(self.counter);
+
+        str montant = str_of(amount_cents);
+        return new PaymentResult(true, txid,
+            "Paiement simule de " + montant + " centimes " + currency
+            + " accepte (" + description + ")");
+    }
+
+    /* Metadonnees du module, pour le registre. */
+    ModuleInfo* info() {
+        return new ModuleInfo(
+            "stripe",
+            "0.1.0-sim",
+            "Fournisseur de paiement Stripe (simulation, sans reseau)",
+            true);
+    }
+}

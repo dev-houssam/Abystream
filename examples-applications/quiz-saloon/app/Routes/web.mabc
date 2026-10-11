@@ -1,0 +1,48 @@
+/* ================================================================
+ * Salon de Quiz — routes web
+ * ================================================================
+ *   GET  /            AuthController.showLogin   (connexion)
+ *   POST /login       AuthController.login        (-> JWT)
+ *   POST /register    AuthController.registerU    (inscription)
+ *   POST /pay         AuthController.pay          (premium via Stripe)
+ *   GET  /room        RoomController.room         (salon de jeu)
+ *   GET  /modules     RoomController.modules      (plugins charges)
+ *   WS   /ws/room     room_handle                 (salon temps reel)
+ * ================================================================ */
+
+NodeGroup* build_routes() {
+    return new NodeGroup(
+        "",
+        new GET(route("/"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.showLogin(req, res);
+        }),
+        new GET(route("/dashboard"), (Request* req, Response* res) => {
+            new 
+            SvgController(req, res);
+        }),
+        new POST(route("/login"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.login(req, res);
+        }),
+        new POST(route("/register"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.registerU(req, res);
+        }),
+        new POST(route("/pay"), (Request* req, Response* res) => {
+            AuthController* c = new AuthController();
+            c.pay(req, res);
+        }),
+        new GET(route("/room"), (Request* req, Response* res) => {
+            RoomController* c = new RoomController();
+            c.room(req, res);
+        }),
+        new GET(route("/modules"), (Request* req, Response* res) => {
+            RoomController* c = new RoomController();
+            c.modules(req, res);
+        }),
+        new WS(route("/ws/room"), (str message) => {
+            return room_handle(message);
+        })
+    );
+}

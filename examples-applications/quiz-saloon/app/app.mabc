@@ -1,0 +1,11 @@
+/* Agregateur de l'application Salon de Quiz. Chemins relatifs a app/.
+   Ordre : config -> models -> modules -> controllers/salon -> routes. */
+import "Models/UserModel.mabc"
+import "Models/QuizModel.mabc"
+import "Modules/StripeModule.mabc"
+import "Config/app.mabc"
+import "Controllers/QuizRoom.mabc"
+import "Controllers/AuthController.mabc"
+import "Controllers/RoomController.mabc"
+import "Controllers/SvgController.mabc"
+import "Routes/web.mabc"

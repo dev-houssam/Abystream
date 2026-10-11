@@ -1,0 +1,274 @@
+/* ================================================================
+ * Salon de Quiz — salon temps reel (WebSocket)
+ * ================================================================
+ * Un salon live partage entre tous les joueurs connectes. Le protocole
+ * est textuel, une commande par message :
+ *
+ *   JOIN:<jwt>          rejoindre le salon (authentifie par JWT)
+ *   ANSWER:<index>      repondre a la question courante (0..3)
+ *   NEXT                passer a la question suivante (diffusee a tous)
+ *   SCORES              demander le classement
+ *
+ * Le serveur repond par des messages prefixes :
+ *   WELCOME:<nom>       accueil apres JOIN
+ *   QUESTION:<json>     enonce courant (id, prompt, choix)
+ *   RESULT:<json>       resultat d'une reponse (correct?, bonne reponse)
+ *   SCORES:<json>       classement
+ *   ERROR:<message>     erreur
+ *
+ * L'etat du salon est GLOBAL (g_room) car les closures WebSocket ne
+ * capturent pas le scope englobant : chaque message entrant est traite
+ * par une fonction libre qui lit/modifie cet etat partage.
+ *
+ * NB : cette v1 gere l'etat commun (question courante, scores) ; le
+ * framework livre un message par frame, ce qui convient a un salon ou
+ * chaque joueur pilote sa progression et consulte le classement commun.
+ * ================================================================ */
+
+/* Un joueur present dans le salon. */
+struct Player {
+    str name;
+    int score;
+    int answered;   /* index de la derniere question repondue, -1 si aucune */
+
+    void init(str name) {
+        self.name = name;
+        self.score = 0;
+        self.answered = -1;
+    }
+}
+
+/* Etat partage du salon. */
+struct QuizRoom {
+    Vec<Player*>* players;
+    Vec<Question*>* questions;
+    int current;    /* index de la question courante dans `questions` */
+    Player* active; /* dernier joueur ayant rejoint (pour attribuer le score) */
+
+    void init() {
+        self.players = new Vec<Player*>();
+        self.questions = new Vec<Question*>();
+        self.current = 0;
+        self.active = cast<Player*>(0);
+    }
+
+    /* Charge les questions jouables selon l'acces (premium ou non). */
+    void load(bool premium_access) {
+        QuizModel* model = new QuizModel(app_db_path());
+        self.questions = model.playable(premium_access);
+        model.close();
+        self.current = 0;
+    }
+
+    /* Retrouve un joueur par nom, ou null. */
+    Player* find_player(str name) {
+        for i in range(self.players.len()) {
+            Player* p = self.players.get(i);
+            if (p.name == name) { return p; }
+        }
+        return cast<Player*>(0);
+    }
+
+    Player* join(str name) {
+        Player* existing = self.find_player(name);
+        if (existing != cast<Player*>(0)) { return existing; }
+        Player* p = new Player(name);
+        self.players.push(p);
+        return p;
+    }
+
+    Question* current_question() {
+        if (self.questions.len() == 0) { return cast<Question*>(0); }
+        if (self.current >= self.questions.len()) { return cast<Question*>(0); }
+        return self.questions.get(self.current);
+    }
+
+    void advance() {
+        if (self.current < self.questions.len()) {
+            self.current = self.current + 1;
+        }
+    }
+}
+
+/* Etat global du salon (un seul salon pour cette v1). */
+QuizRoom* g_room;
+
+/* ----------------------------------------------------------------
+ * Serialisation JSON minimale (sans lib externe)
+ * ---------------------------------------------------------------- */
+
+/* Echappe les guillemets et backslashes pour une valeur JSON. */
+str json_escape(str s) {
+    str out = "";
+    int n = cast<int>(s.len());
+    for i in range(n) {
+        str c = s.slice(i, i + 1);
+        if (c == "\"")      { out = out + "\\\""; }
+        else if (c == "\\") { out = out + "\\\\"; }
+        else { out = out + c; }
+    }
+    return out;
+}
+
+/* Enonce courant en JSON (sans reveler la bonne reponse). */
+str question_json(Question* q) {
+    if (q == cast<Question*>(0)) {
+        return "{\"done\":true}";
+    }
+    return "{\"id\":" + str_of(q.id)
+        + ",\"prompt\":\"" + json_escape(q.prompt) + "\""
+        + ",\"a\":\"" + json_escape(q.choice_a) + "\""
+        + ",\"b\":\"" + json_escape(q.choice_b) + "\""
+        + ",\"c\":\"" + json_escape(q.choice_c) + "\""
+        + ",\"d\":\"" + json_escape(q.choice_d) + "\"}";
+}
+
+/* Classement des joueurs en JSON. */
+str scores_json() {
+    str out = "{\"scores\":[";
+    for i in range(g_room.players.len()) {
+        Player* p = g_room.players.get(i);
+        if (i > 0) { out = out + ","; }
+        out = out + "{\"name\":\"" + json_escape(p.name)
+            + "\",\"score\":" + str_of(p.score) + "}";
+    }
+    return out + "]}";
+}
+
+/* ----------------------------------------------------------------
+ * Handler WebSocket du salon : une commande par message
+ * ---------------------------------------------------------------- */
+str room_handle(str message) {
+    /* separer COMMANDE:argument */
+    int colon = quiz_find(message, ":", 0);
+    str cmd = message;
+    str arg = "";
+    if (colon >= 0) {
+        cmd = message.slice(0, colon);
+        arg = message.slice(colon + 1, cast<int>(message.len()));
+    }
+
+    if (cmd == "JOIN") {
+        /* arg = jeton JWT ; on verifie et on extrait le nom + premium */
+        if (!jwt_verify(arg, app_jwt_secret())) {
+            return "ERROR:jeton invalide";
+        }
+        str payload = jwt_payload_json(arg);
+        str name = json_get(payload, "user");
+        bool premium = json_get(payload, "premium") == "true";
+        if (name == "") { return "ERROR:jeton sans utilisateur"; }
+
+        /* charger les questions selon l'acces du joueur qui rejoint, et
+           repartir de la premiere question. Dans un salon a un seul etat
+           partage, c'est le dernier JOIN qui fixe le niveau ; pour un vrai
+           multi-salon, on separerait un salon "gratuit" et un salon
+           "premium". */
+        g_room.load(premium);
+        Player* p = g_room.join(name);
+        g_room.active = p;   /* ce joueur devient l'actif de cette session */
+        return "WELCOME:" + name;
+    }
+
+    if (cmd == "QUESTION") {
+        return "QUESTION:" + question_json(g_room.current_question());
+    }
+
+    if (cmd == "ANSWER") {
+        Question* q = g_room.current_question();
+        if (q == cast<Question*>(0)) { return "ERROR:aucune question"; }
+        int idx = arg.to_int();
+        bool correct = (idx == q.correct);
+        /* attribuer le point au joueur actif de cette session. On evite
+           de compter deux fois la meme question grace au champ `answered`
+           du joueur (index de la derniere question notee). */
+        Player* p = g_room.active;
+        if (p != cast<Player*>(0) && p.answered != g_room.current) {
+            p.answered = g_room.current;
+            if (correct) { p.score = p.score + 1; }
+        }
+        str verdict = "false";
+        if (correct) { verdict = "true"; }
+        int score_now = 0;
+        if (p != cast<Player*>(0)) { score_now = p.score; }
+        return "RESULT:{\"correct\":" + verdict
+            + ",\"answer\":" + str_of(q.correct)
+            + ",\"score\":" + str_of(score_now) + "}";
+    }
+
+    if (cmd == "NEXT") {
+        g_room.advance();
+        return "QUESTION:" + question_json(g_room.current_question());
+    }
+
+    if (cmd == "SCORES") {
+        return "SCORES:" + scores_json();
+    }
+
+    return "ERROR:commande inconnue";
+}
+
+/* ----------------------------------------------------------------
+ * Utilitaires : recherche de caractere, extraction JSON naive
+ * ---------------------------------------------------------------- */
+
+int quiz_find(str s, str c, int from) {
+    int n = cast<int>(s.len());
+    int i = from;
+    while (i < n) {
+        if (s.slice(i, i + 1) == c) { return i; }
+        i = i + 1;
+    }
+    return -1;
+}
+
+/* Decode le payload base64url d'un JWT en JSON. On reutilise le fait que
+   le payload a ete encode par le framework ; ici on le renvoie tel quel
+   apres decodage cote client. Pour cette demo, le payload JWT est
+   re-signe cote serveur donc on peut l'exposer. */
+str jwt_payload_json(str token) {
+    /* le segment est en base64url ; pour cette demo on stocke aussi le
+       JSON en clair dans un second temps. On decode via un helper. */
+    return jwt_b64url_decode(jwt_payload_b64(token));
+}
+
+/* Extrait la valeur d'une cle d'un JSON plat {"cle":"valeur",...} ou
+   {"cle":valeur}. Retourne "" si absente. Naif mais suffisant pour nos
+   payloads controles. */
+str json_get(str json, str key) {
+    str needle = "\"" + key + "\":";
+    int pos = quiz_find_str(json, needle, 0);
+    if (pos < 0) { return ""; }
+    int start = pos + cast<int>(needle.len());
+    int n = cast<int>(json.len());
+    /* sauter les espaces */
+    while (start < n && json.slice(start, start + 1) == " ") {
+        start = start + 1;
+    }
+    if (start >= n) { return ""; }
+    /* valeur entre guillemets ? */
+    if (json.slice(start, start + 1) == "\"") {
+        int end = quiz_find(json, "\"", start + 1);
+        if (end < 0) { return ""; }
+        return json.slice(start + 1, end);
+    }
+    /* sinon : jusqu'a la virgule ou l'accolade */
+    int end = start;
+    while (end < n) {
+        str c = json.slice(end, end + 1);
+        if (c == "," || c == "}") { break; }
+        end = end + 1;
+    }
+    return json.slice(start, end);
+}
+
+int quiz_find_str(str hay, str needle, int from) {
+    int nlen = cast<int>(needle.len());
+    int n = cast<int>(hay.len());
+    if (nlen == 0) { return -1; }
+    int i = from;
+    while (i + nlen <= n) {
+        if (hay.slice(i, i + nlen) == needle) { return i; }
+        i = i + 1;
+    }
+    return -1;
+}

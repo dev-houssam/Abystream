@@ -1,0 +1,35 @@
+/* ================================================================
+ * Blog "Les Passionnes de MATL-ABC" — configuration applicative
+ * ================================================================
+ * Parametres du serveur et enregistrement des middlewares. Le main
+ * generique lit app_host()/app_port() et appelle register_middlewares().
+ * ================================================================ */
+
+/* Hote d'ecoute. "0.0.0.0" pour etre joignable depuis l'exterieur du
+   conteneur Docker. */
+str app_host() {
+    return "0.0.0.0";
+}
+
+/* Port d'ecoute. */
+int app_port() {
+    return 20080;
+}
+
+/* Chemin de la base SQLite. En conteneur, un volume peut etre monte sur
+   ce dossier pour persister les donnees. */
+str app_db_path() {
+    return "database/blog.db";
+}
+
+/* Middleware applicatif : journalisation simple (corps volontairement
+   minimal ; le framework fournit le mecanisme). */
+void mw_logger(MwCtx* ctx) {
+    /* place pour de la journalisation applicative */
+}
+
+/* Enregistre les middlewares de l'application. Appele par le main
+   generique. Peut rester vide si aucun middleware n'est voulu. */
+void register_middlewares() {
+    use(mw_logger);
+}

@@ -1,0 +1,193 @@
+/* ================================================================
+ * Dictionnaire MATL-ABC — DictionaryController
+ * ================================================================
+ * Logique de presentation : recherche multi-criteres, liste des
+ * resultats, page de detail. Construit le contexte TplData (avec listes
+ * pour {{#each}}) et rend via le layout + partials.
+ *
+ *   index   GET /                page d'accueil (tous les termes)
+ *   search  GET /search          recherche filtree (q, category, text,
+ *                                tag, order)
+ *   show    GET /term/:id        detail d'un terme
+ * ================================================================ */
+
+struct DictionaryController {
+    void init() { }
+
+    /* GET / : accueil, tous les termes tries alphabetiquement. */
+    void index(Request* request, Response* response) {
+        TermModel* model = new TermModel(app_db_path());
+        Vec<Term*>* terms = model.search("", "", "", "", "name");
+        int total = model.count();
+        Vec<str>* cats = model.categories();
+        model.close();
+
+        str body = self.render_results(terms, "", cats, "", "", "", "");
+        self.send_page(response, "Accueil", body, total, cats, "", "", "", "");
+    }
+
+    /* GET /search : recherche filtree. */
+    void search(Request* request, Response* response) {
+        str q       = request.getQuery("q");
+        str category = request.getQuery("category");
+        str text    = request.getQuery("text");
+        str tag     = request.getQuery("tag");
+        str order   = request.getQuery("order");
+        if (order == "") { order = "name"; }
+
+        TermModel* model = new TermModel(app_db_path());
+        Vec<Term*>* terms = model.search(q, category, text, tag, order);
+        int total = model.count();
+        Vec<str>* cats = model.categories();
+        model.close();
+
+        str body = self.render_results(terms, self.describe_query(q, category, text, tag),
+                                       cats, q, category, text, tag);
+        self.send_page(response, "Recherche", body, total, cats, q, category, text, tag);
+    }
+
+    /* GET /term/:id : detail d'un terme. */
+    void show(Request* request, Response* response) {
+        int id = request.param(1).to_int();
+        TermModel* model = new TermModel(app_db_path());
+        Term* term = model.find(id);
+        int total = model.count();
+        Vec<str>* cats = model.categories();
+
+        if (term == cast<Term*>(0)) {
+            model.close();
+            self.not_found(response, total, cats);
+            return;
+        }
+
+        Template* t = new Template("app/Views/detail.html");
+        t.set("name", term.name);
+        t.set("category", term.category);
+        t.set("summary", term.summary);
+        t.set("syntax", term.syntax);
+        t.set("example", term.example);
+        /* tags -> liste pour {{#each tagList}} */
+        Vec<TplData*>* tagList = self.tags_to_list(term.tags);
+        t.setList("tagList", tagList);
+        if (tagList.len() > 0) { t.set("hasTags", "true"); }
+        str body = t.render();
+
+        model.close();
+        self.send_page(response, term.name, body, total, cats, "", "", "", "");
+    }
+
+
+    void showPair(Request* request, Response* response) {
+        int id = request.param(1).to_int();
+        TermModel* model = new TermModel(app_db_path());
+        int total = model.countPair();
+
+        str total_str = f"{total}";
+
+        println(total_str);
+
+        Template* t = new Template("app/Views/detailler.html");
+
+        t.set("nbPair", total_str);
+        str body = t.render();
+
+        model.close();
+        response.body(body+"::LOG").status(200);
+    }
+
+    /* ---------------------------------------------------------------
+     * Rendu des resultats (liste) via results.html
+     * --------------------------------------------------------------- */
+    str render_results(Vec<Term*>* terms, str query_desc, Vec<str>* cats,
+                       str q, str category, str text, str tag) {
+        Template* t = new Template("app/Views/results.html");
+        t.partial("termcard", "app/Views/_termcard.html");
+
+        t.setInt("count", terms.len());
+        if (query_desc != "") { t.set("query_desc", query_desc); }
+
+        /* liste des resultats -> {{#each results}} */
+        Vec<TplData*>* results = new Vec<TplData*>();
+        for i in range(terms.len()) {
+            Term* term = terms.get(i);
+            TplData* d = new TplData();
+            d.setInt("id", term.id);
+            d.set("name", term.name);
+            d.set("category", term.category);
+            d.set("summary", term.summary);
+            d.set("syntax", term.syntax);
+            /* tags de CE terme -> sous-liste {{#each tagList}} */
+            d.setList("tagList", self.tags_to_list(term.tags));
+            results.push(d);
+        }
+        t.setList("results", results);
+        return t.render();
+    }
+
+    /* Enveloppe un corps dans le layout, avec la barre de recherche
+       (partial searchform) et ses categories. */
+    void send_page(Response* response, str title, str body, int total,
+                   Vec<str>* cats, str q, str category, str text, str tag) {
+        Template* layout = new Template("app/Views/layout.html");
+        layout.partial("searchform", "app/Views/_searchform.html");
+
+        layout.set("title", title);
+        layout.set("content", body);
+        layout.setInt("total", total);
+        /* champs pre-remplis de la barre de recherche */
+        layout.set("q", q);
+        layout.set("text", text);
+        layout.set("tag", tag);
+        /* categories -> {{#each categories}} dans le partial */
+        Vec<TplData*>* catList = new Vec<TplData*>();
+        for i in range(cats.len()) {
+            TplData* c = new TplData();
+            c.set("name", cats.get(i));
+            catList.push(c);
+        }
+        layout.setList("categories", catList);
+
+        response.body(layout.render()).status(200);
+    }
+
+    void not_found(Response* response, int total, Vec<str>* cats) {
+        str body = "<div class=\"empty\">Terme introuvable.<br>"
+                 + "<a href=\"/\">Retour au dictionnaire</a></div>";
+        self.send_page(response, "Introuvable", body, total, cats, "", "", "", "");
+        response.status(404);
+    }
+
+    /* ---------------------------------------------------------------
+     * Helpers
+     * --------------------------------------------------------------- */
+
+    /* Decoupe une liste de tags "a,b,c" en TplData {name:...} pour
+       {{#each tagList}}. */
+    Vec<TplData*>* tags_to_list(str tags) {
+        Vec<TplData*>* list = new Vec<TplData*>();
+        int n = cast<int>(tags.len());
+        int start = 0;
+        for i in range(n + 1) {
+            if (i == n || tags.slice(i, i + 1) == ",") {
+                if (i > start) {
+                    str tag = tags.slice(start, i);
+                    TplData* d = new TplData();
+                    d.set("name", tag);
+                    list.push(d);
+                }
+                start = i + 1;
+            }
+        }
+        return list;
+    }
+
+    /* Decrit les criteres actifs, pour l'affichage du compte. */
+    str describe_query(str q, str category, str text, str tag) {
+        str parts = "";
+        if (q != "")        { parts = parts + "nom=\"" + q + "\" "; }
+        if (category != "") { parts = parts + "categorie=" + category + " "; }
+        if (text != "")     { parts = parts + "texte=\"" + text + "\" "; }
+        if (tag != "")      { parts = parts + "tag=" + tag + " "; }
+        return parts;
+    }
+}

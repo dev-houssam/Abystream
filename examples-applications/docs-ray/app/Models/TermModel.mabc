@@ -1,0 +1,154 @@
+/* ================================================================
+ * Dictionnaire MATL-ABC — modele Term
+ * ================================================================
+ * Un terme de la documentation du langage : nom, categorie, resume,
+ * syntaxe, exemple, tags. Le modele encapsule l'acces DB (ORM du
+ * framework) et fournit la recherche multi-criteres :
+ *   - par nom (prefixe / sous-chaine)
+ *   - par categorie (mot-cle / type / fonction / idiome)
+ *   - plein-texte (dans resume + syntaxe + exemple)
+ *   - par tag
+ *   - tri (alphabetique / categorie)
+ *
+ * Depend du framework : Connection, SqliteConnection, Result, Row,
+ * sql_quote.
+ * ================================================================ */
+
+/* Un terme, tel que manipule par les controleurs et les vues. */
+struct Term {
+    int id;
+    str name;
+    str category;
+    str summary;
+    str syntax;
+    str example;
+    str tags;
+
+    void init(int id, str name, str category, str summary,
+              str syntax, str example, str tags) {
+        self.id = id;
+        self.name = name;
+        self.category = category;
+        self.summary = summary;
+        self.syntax = syntax;
+        self.example = example;
+        self.tags = tags;
+    }
+}
+
+struct TermModel {
+    Connection* conn;
+
+    void init(str db_path) {
+        self.conn = new SqliteConnection(db_path);
+        self.conn.run(
+            "CREATE TABLE IF NOT EXISTS terms("
+            + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            + "name TEXT NOT NULL, "
+            + "category TEXT NOT NULL, "
+            + "summary TEXT NOT NULL, "
+            + "syntax TEXT NOT NULL DEFAULT '', "
+            + "example TEXT NOT NULL DEFAULT '', "
+            + "tags TEXT NOT NULL DEFAULT '')");
+    }
+
+    int count() {
+        Result* r = self.conn.select("SELECT COUNT(*) AS n FROM terms");
+        if (r.is_empty()) { return 0; }
+        return r.get(0).get("n").as_int();
+    }
+
+    int countPair() {
+        Result* r = self.conn.select("SELECT COUNT(*) AS n FROM terms WHERE id % 2 = 0");
+        if (r.is_empty()) { return 0; }
+        return r.get(0).get("n").as_int();
+    }
+
+    /* Insere un terme (si la table est vide, sert au peuplement initial). */
+    void create(str name, str category, str summary,
+                str syntax, str example, str tags) {
+        self.conn.run(
+            "INSERT INTO terms(name, category, summary, syntax, example, tags) "
+            + "VALUES("
+            + sql_quote(name) + ", " + sql_quote(category) + ", "
+            + sql_quote(summary) + ", " + sql_quote(syntax) + ", "
+            + sql_quote(example) + ", " + sql_quote(tags) + ")");
+    }
+
+    Term* find(int id) {
+        Result* r = self.conn.select(
+            "SELECT * FROM terms WHERE id = " + str_of(id));
+        if (r.is_empty()) { return cast<Term*>(0); }
+        return self.row_to_term(r.get(0));
+    }
+
+    /* Toutes les categories distinctes, triees. */
+    Vec<str>* categories() {
+        Result* r = self.conn.select(
+            "SELECT DISTINCT category FROM terms ORDER BY category ASC");
+        Vec<str>* cats = new Vec<str>();
+        for i in range(r.size()) {
+            cats.push(r.get(i).text("category"));
+        }
+        return cats;
+    }
+
+    /* Recherche multi-criteres. Chaque parametre vide est ignore.
+       order : "name" (defaut) ou "category". */
+    Vec<Term*>* search(str name_q, str category, str fulltext,
+                       str tag, str order) {
+        str sql = "SELECT * FROM terms WHERE 1=1";
+
+        /* par nom : sous-chaine, insensible a la casse (LIKE) */
+        if (name_q != "") {
+            sql = sql + " AND name LIKE " + sql_quote("%" + name_q + "%");
+        }
+        /* par categorie : egalite exacte */
+        if (category != "") {
+            sql = sql + " AND category = " + sql_quote(category);
+        }
+        /* plein-texte : dans summary, syntax ou example */
+        if (fulltext != "") {
+            str like = sql_quote("%" + fulltext + "%");
+            sql = sql + " AND (summary LIKE " + like
+                      + " OR syntax LIKE " + like
+                      + " OR example LIKE " + like
+                      + " OR name LIKE " + like + ")";
+        }
+        /* par tag : sous-chaine dans la liste de tags */
+        if (tag != "") {
+            sql = sql + " AND tags LIKE " + sql_quote("%" + tag + "%");
+        }
+        /* tri */
+        if (order == "category") {
+            sql = sql + " ORDER BY category ASC, name ASC";
+        } else {
+            sql = sql + " ORDER BY name ASC";
+        }
+
+        Result* r = self.conn.select(sql);
+        return self.to_terms(r);
+    }
+
+    void close() { self.conn.close(); }
+
+    /* --- helpers --- */
+    Term* row_to_term(Row* row) {
+        return new Term(
+            row.number("id"),
+            row.text("name"),
+            row.text("category"),
+            row.text("summary"),
+            row.text("syntax"),
+            row.text("example"),
+            row.text("tags"));
+    }
+
+    Vec<Term*>* to_terms(Result* r) {
+        Vec<Term*>* terms = new Vec<Term*>();
+        for i in range(r.size()) {
+            terms.push(self.row_to_term(r.get(i)));
+        }
+        return terms;
+    }
+}

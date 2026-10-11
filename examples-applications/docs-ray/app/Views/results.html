@@ -1,0 +1,9 @@
+<p class="count">{{ count }} resultat(s){{#if query_desc}} pour {{ query_desc }}{{/if}}</p>
+{{#if results}}
+{{#each results}}
+{{> termcard}}
+{{/each}}
+{{/if}}
+{{#unless results}}
+<div class="empty">Aucun terme ne correspond a votre recherche.<br>Essayez un autre mot-cle ou categorie.</div>
+{{/unless}}

@@ -1,0 +1,19 @@
+<div class="term">
+<h2>{{ name }}<span class="cat">{{ category }}</span></h2>
+<p class="summary">{{ summary }}</p>
+{{#if syntax}}
+<h3>Syntaxe</h3>
+<pre>{{ syntax | escape }}</pre>
+{{/if}}
+{{#if example}}
+<h3>Exemple</h3>
+<pre>{{ example | escape }}</pre>
+{{/if}}
+{{#if hasTags}}
+<h3>Tags</h3>
+<div class="tags chips">
+{{#each tagList}}<a class="chip" href="/search?tag={{ name }}">{{ name }}</a>{{/each}}
+</div>
+{{/if}}
+<p style="margin-top:1rem"><a href="/">&larr; Retour au dictionnaire</a></p>
+</div>

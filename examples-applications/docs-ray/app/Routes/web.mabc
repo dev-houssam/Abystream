@@ -1,0 +1,25 @@
+/* ================================================================
+ * Dictionnaire MATL-ABC — routes web
+ * ================================================================
+ *   GET /            DictionaryController.index   (accueil)
+ *   GET /search      DictionaryController.search  (recherche filtree)
+ *   GET /term/:id    DictionaryController.show     (detail)
+ * ================================================================ */
+
+NodeGroup* build_routes() {
+    return new NodeGroup(
+        "",
+        new GET(route("/"), (Request* req, Response* res) => {
+            DictionaryController* c = new DictionaryController();
+            c.index(req, res);
+        }),
+        new GET(route("/search"), (Request* req, Response* res) => {
+            DictionaryController* c = new DictionaryController();
+            c.search(req, res);
+        }),
+        new GET(route("^/term/([0-9]+)$"), (Request* req, Response* res) => {
+            DictionaryController* c = new DictionaryController();
+            c.show(req, res);
+        })
+    );
+}

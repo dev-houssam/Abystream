@@ -1,0 +1,89 @@
+/* ================================================================
+ * Salon de Quiz — modele User
+ * ================================================================
+ * Comptes joueurs. Chaque utilisateur a un identifiant, un nom, un mot
+ * de passe (hache), et un drapeau premium (accede aux quiz avances).
+ *
+ * Le mot de passe est stocke sous forme de hachage (HMAC-SHA256 du mot
+ * de passe avec un sel applicatif) -- jamais en clair.
+ *
+ * Depend du framework : Connection, Result, Row, sql_quote, et le
+ * module auth (jwt_sign sert de fonction de hachage).
+ * ================================================================ */
+
+struct User {
+    int id;
+    str username;
+    bool premium;
+
+    void init(int id, str username, bool premium) {
+        self.id = id;
+        self.username = username;
+        self.premium = premium;
+    }
+}
+
+struct UserModel {
+    Connection* conn;
+
+    void init(str db_path) {
+        self.conn = new SqliteConnection(db_path);
+        self.conn.run(
+            "CREATE TABLE IF NOT EXISTS users("
+            + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            + "username TEXT NOT NULL UNIQUE, "
+            + "pwd_hash TEXT NOT NULL, "
+            + "premium INTEGER NOT NULL DEFAULT 0)");
+    }
+
+    /* Hache un mot de passe (HMAC-SHA256 avec un sel applicatif). */
+    str hash_pwd(str password) {
+        return jwt_sign(password, "sel-quiz-abystream");
+    }
+
+    /* Cree un compte. Retourne false si le nom est deja pris. */
+    bool register_user(str username, str password) {
+        Result* existing = self.conn.select(
+            "SELECT id FROM users WHERE username = " + sql_quote(username));
+        if (!existing.is_empty()) { return false; }
+        self.conn.run(
+            "INSERT INTO users(username, pwd_hash, premium) VALUES("
+            + sql_quote(username) + ", " + sql_quote(self.hash_pwd(password))
+            + ", 0)");
+        return true;
+    }
+
+    /* Verifie les identifiants. Retourne le User* si ok, sinon null. */
+    User* authenticate(str username, str password) {
+        str h = self.hash_pwd(password);
+        Result* r = self.conn.select(
+            "SELECT * FROM users WHERE username = " + sql_quote(username)
+            + " AND pwd_hash = " + sql_quote(h));
+        if (r.is_empty()) { return cast<User*>(0); }
+        return self.row_to_user(r.get(0));
+    }
+
+    User* find_by_name(str username) {
+        Result* r = self.conn.select(
+            "SELECT * FROM users WHERE username = " + sql_quote(username));
+        if (r.is_empty()) { return cast<User*>(0); }
+        return self.row_to_user(r.get(0));
+    }
+
+    /* Active l'abonnement premium d'un utilisateur (apres paiement). */
+    void grant_premium(str username) {
+        self.conn.run(
+            "UPDATE users SET premium = 1 WHERE username = "
+            + sql_quote(username));
+    }
+
+    void close() { self.conn.close(); }
+
+    /* --- helpers --- */
+    User* row_to_user(Row* row) {
+        return new User(
+            row.number("id"),
+            row.text("username"),
+            row.number("premium") == 1);
+    }
+}

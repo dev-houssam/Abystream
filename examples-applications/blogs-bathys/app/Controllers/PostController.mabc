@@ -1,0 +1,162 @@
+/* ================================================================
+ * Blog "Les Passionnes de MATL-ABC" — PostController
+ * ================================================================
+ * CRUD des articles :
+ *   show    GET  /posts/:id       afficher un article
+ *   form    GET  /posts/new       formulaire de creation
+ *   create  POST /posts           enregistrer un nouvel article
+ *   remove  POST /posts/:id/delete supprimer un article
+ * ================================================================ */
+
+struct PostController {
+    void init() { }
+
+    /* GET /posts/:id : afficher un article complet. */
+    void show(Request* request, Response* response) {
+        int id = request.param(1).to_int();
+        PostModel* model = new PostModel(app_db_path());
+        Post* post = model.find(id);
+
+        if (post == cast<Post*>(0)) {
+            model.close();
+            self.not_found(response);
+            return;
+        }
+
+        Html* article = new Html("div");
+        article.attr("class", "post");
+
+        Html* h = new Html("h2");
+        h.content(post.title);
+        article.child(h);
+
+        Html* meta = new Html("p");
+        meta.attr("class", "meta");
+        meta.content("par " + post.author + " — " + post.created_at);
+        article.child(meta);
+
+        Html* contenu = new Html("div");
+        contenu.content(post.content);
+        article.child(contenu);
+
+        /* bouton de suppression (POST) */
+        Html* form = new Html("form");
+        form.attr("method", "post");
+        form.attr("action", "/posts/" + str_of(post.id) + "/delete");
+        Html* btn = new Html("button");
+        btn.attr("class", "btn");
+        btn.attr("type", "submit");
+        btn.content("Supprimer cet article");
+        form.child(btn);
+        article.child(form);
+
+        model.close();
+
+        Template* layout = new Template("app/Views/layout.html");
+        str page = layout
+            .set("title", post.title)
+            .setHtml("content", article)
+            .render();
+        response.body(page).status(200);
+    }
+
+    /* GET /posts/new : formulaire de creation. */
+    void form(Request* request, Response* response) {
+        Html* wrapper = div();
+
+        Html* titre = new Html("h2");
+        titre.content("Ecrire un nouvel article");
+        wrapper.child(titre);
+
+        Html* form = new Html("form");
+        form.attr("method", "post");
+        form.attr("action", "/posts");
+
+        form.child(self.label("Titre"));
+        form.child(self.input("title", "text"));
+        form.child(self.label("Votre nom"));
+        form.child(self.input("author", "text"));
+        form.child(self.label("Contenu"));
+        Html* textarea = new Html("textarea");
+        textarea.attr("name", "content");
+        form.child(textarea);
+
+        Html* btn = new Html("button");
+        btn.attr("class", "btn");
+        btn.attr("type", "submit");
+        btn.content("Publier");
+        Html* br = new Html("div");
+        br.content(" ");
+        form.child(br);
+        form.child(btn);
+
+        wrapper.child(form);
+
+        Template* layout = new Template("app/Views/layout.html");
+        str page = layout
+            .set("title", "Nouvel article")
+            .setHtml("content", wrapper)
+            .render();
+        response.body(page).status(200);
+    }
+
+    /* POST /posts : enregistrer un nouvel article. */
+    void create(Request* request, Response* response) {
+        str title   = request.form("title");
+        str author  = request.form("author");
+        str content = request.form("content");
+
+        /* validation minimale : titre et auteur requis */
+        if (title == "" || author == "") {
+            response.body("Titre et auteur sont requis.").status(400);
+            return;
+        }
+
+        PostModel* model = new PostModel(app_db_path());
+        model.create(title, author, content);
+        model.close();
+
+        /* redirection vers l'accueil */
+        response.status(302).location("/").body("");
+    }
+
+    /* POST /posts/:id/delete : supprimer un article. */
+    void remove(Request* request, Response* response) {
+        int id = request.param(1).to_int();
+        PostModel* model = new PostModel(app_db_path());
+        model.remove(id);
+        model.close();
+
+        response.status(302).location("/").body("");
+    }
+
+    /* --- helpers de formulaire --- */
+    Html* label(str text) {
+        Html* l = new Html("label");
+        l.content(text);
+        return l;
+    }
+
+    Html* input(str name, str kind) {
+        Html* i = new Html("input");
+        i.attr("type", kind);
+        i.attr("name", name);
+        i.self_closing = true;
+        return i;
+    }
+
+    void not_found(Response* response) {
+        Html* wrapper = div();
+        Html* h = new Html("h2");
+        h.content("Article introuvable");
+        wrapper.child(h);
+        wrapper.child(a("/", "Retour a l'accueil"));
+
+        Template* layout = new Template("app/Views/layout.html");
+        str page = layout
+            .set("title", "Introuvable")
+            .setHtml("content", wrapper)
+            .render();
+        response.body(page).status(404);
+    }
+}

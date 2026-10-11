@@ -1,0 +1,123 @@
+/* ================================================================
+ * Salon de Quiz "Les Passionnes d'Abystream" — configuration
+ * ================================================================
+ * Host/port/DB via variables d'environnement (idiome MATL-ABC), secret
+ * JWT, enregistrement des modules (plugin Stripe), et peuplement des
+ * questions au demarrage.
+ * ================================================================ */
+
+str env_or(str name, str fallback) {
+    char* raw = getenv(cstr_of(name));
+    if (raw == cast<char*>(0)) { return fallback; }
+    str v = str_from(raw);
+    if (v == "") { return fallback; }
+    return v;
+}
+
+str app_host() { return env_or("HOST", "0.0.0.0"); }
+int app_port() { return env_or("PORT", "8080").to_int(); }
+str app_db_path() { return env_or("DB_PATH", "database/quiz.db"); }
+
+/* Secret de signature des JWT. En production : toujours via l'environnement,
+   jamais en dur. */
+str app_jwt_secret() { return env_or("JWT_SECRET", "quiz-abystream-secret-dev"); }
+
+/* Prix de l'abonnement premium, en centimes. */
+int app_premium_price() { return 500; }   /* 5,00 EUR */
+
+void register_middlewares() {
+    /* aucun middleware global pour cette demo */
+}
+
+/* Enregistre les modules/plugins de l'application. Ici, on branche le
+   module de paiement Stripe (simule) sur le registre. Changer de
+   fournisseur = changer cette seule ligne. */
+void register_modules() {
+    g_plugins = new PluginRegistry();
+
+    StripeModule* stripe = new StripeModule(
+        env_or("STRIPE_KEY", "sk_test_simule"));
+    g_plugins.use_payment(stripe);
+    g_plugins.register_module(stripe.info());
+}
+
+/* Peuple la base (questions + compte de demo) si elle est vide. */
+void seed_if_empty() {
+    QuizModel* quiz = new QuizModel(app_db_path());
+    if (quiz.count() == 0) {
+        /* --- questions gratuites (premium = 0) --- */
+        quiz.create(
+            "Comment compose-t-on plusieurs fichiers dans Abystream ?",
+            "via [subprojects] uniquement",
+            "avec import \"fichier.mabc\" dans le code",
+            "en un seul gros fichier",
+            "avec #include du C",
+            1, 0);
+        quiz.create(
+            "Quel mecanisme l'ORM d'Abystream utilise-t-il pour l'abstraction ?",
+            "un header Connection",
+            "des macros",
+            "de la reflexion runtime",
+            "rien, c'est du SQLite en dur",
+            0, 0);
+        quiz.create(
+            "Ou vivent les routes dans un projet Abystream ?",
+            "dans le main",
+            "dans app/Routes/web.mabc",
+            "dans le conf.toml",
+            "elles sont auto-generees",
+            1, 0);
+        quiz.create(
+            "Quelle syntaxe de template affiche une variable ?",
+            "<%= var %>",
+            "${var}",
+            "{{ var }}",
+            "[var]",
+            2, 0);
+        quiz.create(
+            "Le moteur de template supporte-t-il les boucles ?",
+            "non",
+            "oui, avec {{#each}}",
+            "seulement en JavaScript",
+            "uniquement les conditions",
+            1, 0);
+
+        /* --- questions premium (premium = 1) --- */
+        quiz.create(
+            "Comment un plugin de paiement s'integre-t-il ?",
+            "en modifiant le framework",
+            "en implementant le header PaymentProvider",
+            "via une API REST obligatoire",
+            "ce n'est pas possible",
+            1, 1);
+        quiz.create(
+            "Quel algorithme signe les JWT du framework ?",
+            "RS256",
+            "none",
+            "HS256 (HMAC-SHA256)",
+            "MD5",
+            2, 1);
+        quiz.create(
+            "Pourquoi compiler avec 'matlabc main.mabc --conf' et non 'build' ?",
+            "c'est plus rapide",
+            "pour propager le webshim aux modules importes",
+            "aucune raison",
+            "build n'existe pas",
+            1, 1);
+        quiz.create(
+            "Quel piege avec les closures dans les routes ?",
+            "elles sont trop lentes",
+            "elles ne capturent pas le scope englobant",
+            "elles ne compilent jamais",
+            "il faut les ecrire en C",
+            1, 1);
+    }
+    quiz.close();
+
+    /* compte de demonstration */
+    UserModel* users = new UserModel(app_db_path());
+    if (users.find_by_name("demo") == cast<User*>(0)) {
+        users.register_user("demo", "demo");
+    }
+    users.close();
+}

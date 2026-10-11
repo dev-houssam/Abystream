@@ -1,0 +1,53 @@
+/* ================================================================
+ * Salon de Quiz — RoomController
+ * ================================================================
+ * Sert la page du salon (interface de jeu qui se connecte au WebSocket)
+ * et la liste des modules charges (page d'administration simple).
+ *
+ *   room     GET /room       page du salon (client WebSocket)
+ *   modules  GET /modules    liste des plugins charges
+ * ================================================================ */
+
+struct RoomController {
+    void init() { }
+
+    /* GET /room : l'interface de jeu. */
+    void room(Request* request, Response* response) {
+        Template* t = new Template("app/Views/room.html");
+        str body = t.render();
+        self.page(response, "Salon de Quiz", body);
+    }
+
+    /* GET /modules : liste des modules/plugins charges (via le registre). */
+    void modules(Request* request, Response* response) {
+        Template* t = new Template("app/Views/modules.html");
+
+        /* liste des modules -> {{#each modules}} */
+        Vec<TplData*>* mods = new Vec<TplData*>();
+        Vec<ModuleInfo*>* all = g_plugins.all();
+        for i in range(all.len()) {
+            ModuleInfo* m = all.get(i);
+            TplData* d = new TplData();
+            d.set("name", m.name);
+            d.set("version", m.version);
+            d.set("description", m.description);
+            d.set("enabled", self.bool_str(m.enabled));
+            mods.push(d);
+        }
+        t.setList("modules", mods);
+        str body = t.render();
+        self.page(response, "Modules", body);
+    }
+
+    str bool_str(bool b) {
+        if (b) { return "actif"; }
+        return "inactif";
+    }
+
+    void page(Response* response, str title, str body) {
+        Template* layout = new Template("app/Views/layout.html");
+        layout.set("title", title);
+        layout.set("content", body);
+        response.body(layout.render()).status(200);
+    }
+}

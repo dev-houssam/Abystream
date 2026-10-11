@@ -1,0 +1,60 @@
+<div class="card">
+<h2>Salon en direct</h2>
+<div id="status" class="msg">Connexion au salon…</div>
+<div id="question"></div>
+<div id="result"></div>
+<div style="margin-top:1rem">
+<button onclick="next()">Question suivante ▶</button>
+<button onclick="scores()" style="background:#adb5bd">Voir les scores</button>
+</div>
+</div>
+<div class="card">
+<h3>Classement</h3>
+<ul id="scores" class="scores"><li>Aucun score pour l'instant</li></ul>
+</div>
+
+<script>
+const jwt = localStorage.getItem('jwt');
+let ws, current = null;
+if(!jwt){ document.getElementById('status').innerHTML='Vous devez <a href="/">vous connecter</a> d\'abord.'; }
+else {
+  const proto = location.protocol==='https:'?'wss':'ws';
+  ws = new WebSocket(proto+'://'+location.host+'/ws/room');
+  ws.onopen = ()=>{ ws.send('JOIN:'+jwt); };
+  ws.onmessage = (ev)=>handle(ev.data);
+  ws.onclose = ()=>{ document.getElementById('status').innerHTML='<div class="msg ko">Deconnecte du salon</div>'; };
+}
+function handle(msg){
+  const c = msg.indexOf(':');
+  const cmd = c<0?msg:msg.slice(0,c);
+  const arg = c<0?'':msg.slice(c+1);
+  if(cmd==='WELCOME'){ document.getElementById('status').innerHTML='<div class="msg ok">Bienvenue '+arg+' ! Le salon est pret.</div>'; ws.send('QUESTION'); }
+  else if(cmd==='QUESTION'){ renderQuestion(JSON.parse(arg)); }
+  else if(cmd==='RESULT'){ renderResult(JSON.parse(arg)); }
+  else if(cmd==='SCORES'){ renderScores(JSON.parse(arg)); }
+  else if(cmd==='ERROR'){ document.getElementById('status').innerHTML='<div class="msg ko">'+arg+'</div>'; }
+}
+function renderQuestion(q){
+  document.getElementById('result').innerHTML='';
+  if(q.done){ document.getElementById('question').innerHTML='<p><b>Quiz termine !</b> Consultez les scores.</p>'; current=null; return; }
+  current=q;
+  const opts=['a','b','c','d'];
+  let html='<h3>'+q.prompt+'</h3>';
+  opts.forEach((o,i)=>{ html+='<button class="choice" onclick="answer('+i+')">'+String.fromCharCode(65+i)+'. '+q[o]+'</button>'; });
+  document.getElementById('question').innerHTML=html;
+}
+function answer(i){ ws.send('ANSWER:'+i); }
+function renderResult(r){
+  const ok=r.correct;
+  const scoreTxt = (r.score!==undefined) ? ' — score : '+r.score+' pts' : '';
+  document.getElementById('result').innerHTML='<div class="msg '+(ok?'ok':'ko')+'">'+(ok?'Bonne reponse ✓':'Mauvaise reponse ✗ (la bonne etait '+String.fromCharCode(65+r.answer)+')')+scoreTxt+'</div>';
+  if(ws) ws.send('SCORES');   /* rafraichir le classement apres chaque reponse */
+}
+function next(){ if(ws) ws.send('NEXT'); }
+function scores(){ if(ws) ws.send('SCORES'); }
+function renderScores(s){
+  const ul=document.getElementById('scores');
+  if(!s.scores.length){ ul.innerHTML='<li>Aucun score</li>'; return; }
+  ul.innerHTML=s.scores.map(p=>'<li><b>'+p.name+'</b> — '+p.score+' pts</li>').join('');
+}
+</script>

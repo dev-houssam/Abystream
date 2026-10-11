@@ -1,0 +1,20 @@
+<form class="searchbar" method="get" action="/search">
+<div class="row">
+<input type="text" name="q" placeholder="Rechercher un terme…" value="{{ q }}">
+<select name="category">
+<option value="">Toutes les categories</option>
+{{#each categories}}
+<option value="{{ name }}">{{ name | capitalize }}</option>
+{{/each}}
+</select>
+</div>
+<div class="row">
+<input type="text" name="text" placeholder="Plein-texte (descriptions)…" value="{{ text }}">
+<input type="text" name="tag" placeholder="Tag…" value="{{ tag }}">
+<select name="order">
+<option value="name">Tri : alphabetique</option>
+<option value="category">Tri : par categorie</option>
+</select>
+<button type="submit">Chercher</button>
+</div>
+</form>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} — Dictionnaire Recurstream</title>
+<style>
+:root { --accent:#0b7285; --accent2:#15aabf; --bg:#f8f9fa; --card:#fff; --ink:#212529; --muted:#868e96; }
+* { box-sizing:border-box; }
+body { font-family:system-ui,-apple-system,sans-serif; max-width:920px; margin:0 auto; padding:1.5rem; color:var(--ink); background:var(--bg); }
+header { border-bottom:3px solid var(--accent); padding-bottom:1rem; margin-bottom:1.5rem; }
+header h1 { color:var(--accent); margin:0 0 .3rem; }
+header h1 a { color:var(--accent); text-decoration:none; }
+header .tagline { color:var(--muted); margin:0; }
+.searchbar { background:var(--card); border-radius:12px; padding:1.2rem; margin-bottom:1.5rem; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+.searchbar .row { display:flex; gap:.6rem; flex-wrap:wrap; margin-bottom:.6rem; }
+.searchbar input, .searchbar select { flex:1; min-width:140px; padding:.55rem .7rem; border:1px solid #ced4da; border-radius:7px; font-size:.95rem; }
+.searchbar button { background:var(--accent); color:#fff; border:none; padding:.55rem 1.3rem; border-radius:7px; font-size:.95rem; cursor:pointer; }
+.searchbar button:hover { background:var(--accent2); }
+.chips { display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.4rem; }
+.chip { display:inline-block; background:#e3fafc; color:var(--accent); padding:.2rem .6rem; border-radius:999px; font-size:.8rem; text-decoration:none; }
+.chip:hover { background:#c5f6fa; }
+.count { color:var(--muted); font-size:.9rem; margin-bottom:1rem; }
+.term { background:var(--card); border-radius:10px; padding:1.1rem 1.4rem; margin-bottom:1rem; box-shadow:0 1px 6px rgba(0,0,0,.05); border-left:4px solid var(--accent2); }
+.term h2 { margin:0 0 .2rem; font-size:1.25rem; }
+.term h2 a { color:var(--ink); text-decoration:none; }
+.term .cat { display:inline-block; background:var(--accent); color:#fff; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; padding:.15rem .55rem; border-radius:4px; vertical-align:middle; margin-left:.5rem; }
+.term .summary { margin:.5rem 0; }
+.term pre { background:#f1f3f5; padding:.7rem .9rem; border-radius:6px; overflow-x:auto; font-size:.85rem; margin:.4rem 0; }
+.term .tags { margin-top:.5rem; }
+.empty { text-align:center; color:var(--muted); padding:2rem; }
+footer { margin-top:2rem; text-align:center; color:var(--muted); font-size:.85rem; }
+</style>
+</head>
+<body>
+<header>
+<h1><a href="/">Dictionnaire du langage</a></h1>
+<p class="tagline">La documentation du langage, indexee et cherchable</p>
+</header>
+{{> searchform}}
+{{ content }}
+<footer>{{ total }} termes documentes · Propulse par Abystream</footer>
+</body>
+</html>

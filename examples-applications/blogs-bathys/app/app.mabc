@@ -1,0 +1,14 @@
+/* ================================================================
+ * Abystream — agregateur de l'application
+ * ================================================================
+ * Importe tout le code applicatif dans l'ordre des dependances.
+ * Les chemins sont relatifs a ce fichier (app/).
+ *
+ * Ordre : config -> models -> controllers -> routes
+ * ================================================================ */
+
+import "Config/app.mabc"
+import "Models/PostModel.mabc"
+import "Controllers/HomeController.mabc"
+import "Controllers/PostController.mabc"
+import "Routes/web.mabc"

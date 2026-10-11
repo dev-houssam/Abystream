@@ -1,0 +1,5 @@
+/* Agregateur de l'application dictionnaire. Chemins relatifs a app/. */
+import "Config/app.mabc"
+import "Models/TermModel.mabc"
+import "Controllers/DictionaryController.mabc"
+import "Routes/web.mabc"

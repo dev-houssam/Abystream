@@ -1,0 +1,105 @@
+/* ================================================================
+ * Blog "Les Passionnes de MATL-ABC" — modele Post
+ * ================================================================
+ * Represente un article du blog et encapsule l'acces aux donnees via
+ * l'ORM du framework (Connection + Model). Un article : id, titre,
+ * auteur, contenu, date.
+ *
+ * Depend du framework : Connection, SqliteConnection, Model, Result,
+ * Row, sql_quote.
+ * ================================================================ */
+
+/* Un article, tel que manipule par les controleurs et les vues. */
+struct Post {
+    int id;
+    str title;
+    str author;
+    str content;
+    str created_at;
+
+    void init(int id, str title, str author, str content, str created_at) {
+        self.id = id;
+        self.title = title;
+        self.author = author;
+        self.content = content;
+        self.created_at = created_at;
+    }
+}
+
+/* Acces aux articles en base. Ouvre la connexion, cree la table si
+   besoin, et expose des operations metier claires (all, find, create,
+   remove). */
+struct PostModel {
+    Connection* conn;
+    Model* base;
+
+    /* Ouvre la base et garantit l'existence de la table. */
+    void init(str db_path) {
+        self.conn = new SqliteConnection(db_path);
+        self.base = new Model(self.conn, "posts");
+        self.conn.run(
+            "CREATE TABLE IF NOT EXISTS posts("
+            + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            + "title TEXT NOT NULL, "
+            + "author TEXT NOT NULL, "
+            + "content TEXT NOT NULL, "
+            + "created_at TEXT NOT NULL DEFAULT (datetime('now')))");
+    }
+
+    /* Nombre d'articles. */
+    int count() {
+        return self.base.count();
+    }
+
+    /* Tous les articles, du plus recent au plus ancien. */
+    Vec<Post*>* all() {
+        Result* r = self.conn.select(
+            "SELECT * FROM posts ORDER BY id DESC");
+        return self.to_posts(r);
+    }
+
+    /* Un article par identifiant, ou null s'il n'existe pas. */
+    Post* find(int id) {
+        Result* r = self.conn.select(
+            "SELECT * FROM posts WHERE id = " + str_of(id));
+        if (r.is_empty()) { return cast<Post*>(0); }
+        return self.row_to_post(r.get(0));
+    }
+
+    /* Cree un article. Les valeurs texte sont echappees (anti-injection). */
+    void create(str title, str author, str content) {
+        self.conn.run(
+            "INSERT INTO posts(title, author, content) VALUES("
+            + sql_quote(title) + ", "
+            + sql_quote(author) + ", "
+            + sql_quote(content) + ")");
+    }
+
+    /* Supprime un article par identifiant. */
+    void remove(int id) {
+        self.base.remove(id);
+    }
+
+    /* Ferme la connexion. */
+    void close() {
+        self.conn.close();
+    }
+
+    /* --- helpers de conversion Row -> Post --- */
+    Post* row_to_post(Row* row) {
+        return new Post(
+            row.number("id"),
+            row.text("title"),
+            row.text("author"),
+            row.text("content"),
+            row.text("created_at"));
+    }
+
+    Vec<Post*>* to_posts(Result* r) {
+        Vec<Post*>* posts = new Vec<Post*>();
+        for i in range(r.size()) {
+            posts.push(self.row_to_post(r.get(i)));
+        }
+        return posts;
+    }
+}
